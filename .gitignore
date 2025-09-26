@@ -1,0 +1,19 @@
+# Created by venv; see https://docs.python.org/3/library/venv.html
+*
+# Python
+__pycache__/
+*.pyc
+
+# Virtual Environment
+# 가상 환경 폴더는 Git에 포함되지 않아야 합니다.
+myenv/
+
+# OS and Editors
+# macOS 및 VS Code 등에서 자동으로 생성하는 파일
+.DS_Store
+.vscode/
+
+# Keys/Secrets (보안 필수)
+# API 키나 비밀 정보가 담긴 파일을 절대 커밋하지 않도록 지정합니다.
+*.env
+*api_keys.py
