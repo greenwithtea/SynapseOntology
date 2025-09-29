@@ -1,19 +1,32 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
-*
-# Python
+# -----------------------------------------------
+# 1. Python/IDE Generated Files (파이썬/IDE 생성 파일)
+# -----------------------------------------------
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
 
-# Virtual Environment
-# 가상 환경 폴더는 Git에 포함되지 않아야 합니다.
-myenv/
-
-# OS and Editors
-# macOS 및 VS Code 등에서 자동으로 생성하는 파일
-.DS_Store
+# VS Code 설정 파일 (프로젝트 내부 설정)
 .vscode/
 
-# Keys/Secrets (보안 필수)
-# API 키나 비밀 정보가 담긴 파일을 절대 커밋하지 않도록 지정합니다.
+# -----------------------------------------------
+# 2. Virtual Environment (가상 환경) - 필수 무시
+# -----------------------------------------------
+# myenv 폴더는 Git에 올라가지 않아야 합니다.
+myenv/
+
+# -----------------------------------------------
+# 3. Secrets and Sensitive Data (보안 및 민감 데이터) - 필수 무시
+# -----------------------------------------------
+# API 키, 비밀번호 등이 담긴 파일은 절대 커밋 금지
+.env
 *.env
 *api_keys.py
+
+# SQLite DB (개발용 DB 파일)
+*.db
+*.sqlite3
+
+# Flask/Session Data
+instance/
