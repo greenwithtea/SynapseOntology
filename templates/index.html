@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>온톨로지 자동 구축 및 시각화 도구</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f7f9; }
+        #container { max-width: 1200px; margin: 0 auto; background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        .control-section { margin-bottom: 25px; padding: 15px; border: 1px solid #dcdcdc; border-radius: 6px; }
+        #fileInput { margin-right: 15px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #3498db; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.3s; }
+        button:hover { background-color: #2980b9; }
+        #output { background-color: #ecf0f1; padding: 15px; border-radius: 4px; overflow-x: auto; max-height: 400px; white-space: pre-wrap; font-family: monospace; font-size: 14px; }
+        #loading { color: #e67e22; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <h1>Gemini 기반 온톨로지 자동 구축 및 분석</h1>
+
+    <div class="control-section">
+        <h2>1. 파일 업로드 및 분석</h2>
+        <input type="file" id="fileInput" accept=".pdf,.docx">
+        <button onclick="analyzeFile()">분석 및 개념 추출 시작</button>
+        <p id="loading"></p>
+    </div>
+
+    <div class="control-section">
+        <h2>2. Gemini API 응답 (JSON 데이터)</h2>
+        <pre id="output">파일을 업로드하면 Gemini API의 분석 결과가 여기에 표시됩니다.</pre>
+    </div>
+
+</div>
+
+<script>
+    async function analyzeFile() {
+        const fileInput = document.getElementById('fileInput');
+        const file = fileInput.files[0];
+        const outputDiv = document.getElementById('output');
+        const loadingDiv = document.getElementById('loading');
+        
+        if (!file) {
+            outputDiv.textContent = "오류: PDF 또는 DOCX 파일을 선택해주세요.";
+            return;
+        }
+
+        loadingDiv.textContent = "파일 업로드 및 Gemini 분석 중입니다... (10~30초 소요)";
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/analyze_file', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                loadingDiv.textContent = "분석 완료!";
+                outputDiv.textContent = JSON.stringify(result.ontology_data, null, 2);
+                
+                // --- 다음 단계: 이 ontology_data를 시각화 함수로 전달하게 됩니다. ---
+                // renderGraph(result.ontology_data); 
+
+            } else {
+                loadingDiv.textContent = "분석 실패!";
+                outputDiv.textContent = `오류 발생: ${result.error}`;
+            }
+        } catch (e) {
+            loadingDiv.textContent = "네트워크 오류!";
+            outputDiv.textContent = `서버 통신 오류: ${e.message}`;
+        }
+    }
+</script>
+
+</body>
+</html>
