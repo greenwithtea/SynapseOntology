@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 # rdflib, PyPDF2 추가
 import rdflib
 import json
-from PyPDF2 import PdfReader # PdfReader로 임포트 방식 변경
+import pdfplumber
 from docx import Document
 
 # --- 0. 환경 변수 로드 및 초기 설정 ---
@@ -24,36 +24,47 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 
-# --- 1. 텍스트 추출 함수 ---
+# --- 1. 텍스트 추출 함수 수정 ---
 def extract_text_from_file(file_path, file_type):
-    """PDF 또는 DOCX 파일에서 텍스트를 추출합니다."""
+    """PDF 또는 DOCX 파일에서 텍스트를 추출"""
     text = ""
     try:
         if file_type == "pdf":
             with open(file_path, 'rb') as f:
+                # PDF 파일을 처리할 때, 'reader.pages'를 리스트로 변환하여 처리 안정성 높임
                 reader = PdfReader(f)
-                for page in reader.pages:
-                    # 빈 페이지 또는 추출 오류를 방지하기 위해 조건문 추가
+                
+                # 텍스트 추출 디버깅 메시지 추가
+                print(f"--- PDF: {file_path} ---")
+                
+                for i, page in enumerate(reader.pages):
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text + "\n"
+                        # 첫 페이지 텍스트의 일부를 출력하여 추출 성공 여부 확인
+                        print(f"페이지 {i+1} 추출 성공: {page_text[:50]}...")
+                    else:
+                        print(f"페이지 {i+1} 텍스트 추출 실패 (빈 페이지일 수 있음)")
+        
         elif file_type == "docx":
+            # ... (docx 로직은 그대로 유지)
             doc = Document(file_path)
             for para in doc.paragraphs:
                 text += para.text + "\n"
-        
-        # API 호출 제한을 고려하여 텍스트 길이를 제한합니다.
+
+        # API 호출 제한을 고려하여 텍스트 길이를 제한
         return text[:30000] 
         
     except Exception as e:
-        print(f"텍스트 추출 중 오류 발생: {e}")
+        # 파일 인코딩이나 라이브러리 오류가 발생했을 경우 출력
+        print(f"❌ 텍스트 추출 중 치명적 오류 발생: {e}")
         return ""
 
 
 # --- 2. 기본 라우트 (프론트엔드 로드) ---
 @app.route('/')
 def index():
-    # 수정된 부분: 텍스트 대신 index.html 파일을 찾아 렌더링하도록 지시
+    # index.html 파일을 찾아 렌더링하도록 지시
     return render_template('index.html') 
 
 
@@ -107,5 +118,5 @@ def analyze_file():
 
 
 if __name__ == '__main__':
-    # .env 파일에서 환경 변수를 로드하도록 load_dotenv()가 이미 실행되었으므로 키를 안전하게 사용 가능합니다.
+    # .env 파일에서 환경 변수를 로드하도록 load_dotenv()가 이미 실행되었으므로 키를 안전하게 사용 가능.
     app.run(debug=True)
