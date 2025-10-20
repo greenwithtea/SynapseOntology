@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>온톨로지 자동 구축 및 시각화 도구</title>
+    <!-- Cytoscape.js 라이브러리 로드 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f7f9; }
         #container { max-width: 1200px; margin: 0 auto; background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
@@ -14,6 +16,24 @@
         button:hover { background-color: #2980b9; }
         #output { background-color: #ecf0f1; padding: 15px; border-radius: 4px; overflow-x: auto; max-height: 400px; white-space: pre-wrap; font-family: monospace; font-size: 14px; }
         #loading { color: #e67e22; font-weight: bold; }
+        #graph-container { 
+            /* 그래프 영역 스타일 */
+            width: 100%; 
+            height: 600px; 
+            border: 2px solid #3498db; 
+            background-color: #fcfcfc;
+        }
+        /* 💡 Protege 스타일 및 미적 요소 CSS */
+        .highlighted {
+            opacity: 1.0 !important;
+        }
+        .dimmed {
+            opacity: 0.15 !important;
+        }
+        /* 클래스별 색상 예시 */
+        .cls_저자 { background-color: #e74c3c; color: white; shape: 'roundrectangle'; }
+        .cls_논문 { background-color: #2ecc71; color: white; shape: 'ellipse'; }
+        .cls_기관 { background-color: #3498db; color: white; shape: 'octagon'; }
     </style>
 </head>
 <body>
@@ -33,9 +53,126 @@
         <pre id="output">파일을 업로드하면 Gemini API의 분석 결과가 여기에 표시됩니다.</pre>
     </div>
 
+    <div class="control-section">
+        <h2>3. 시맨틱 온톨로지 그래프</h2>
+        <div id="graph-container"></div>
+        <p id="graph-status">분석 후 그래프가 여기에 표시됩니다.</p>
+    </div>
+
 </div>
 
 <script>
+    let cy; // Cytoscape 인스턴스를 저장할 전역 변수
+
+    // 💡 2.3 단계: 그래프 렌더링 및 인터랙션 로직
+    function renderGraph(elements) {
+        const container = document.getElementById('graph-container');
+        const statusDiv = document.getElementById('graph-status');
+
+        if (elements.length === 0) {
+            statusDiv.textContent = "그래프를 그릴 데이터 요소가 없습니다.";
+            if (cy) cy.destroy();
+            return;
+        }
+
+        if (cy) cy.destroy(); // 기존 그래프 제거
+
+        cy = cytoscape({
+            container: container,
+            elements: elements,
+            
+            // 💡 Protege처럼 깔끔한 배치를 위해 'cose' 레이아웃 사용
+            layout: { 
+                name: 'cose', 
+                animate: 'end', 
+                animationDuration: 800,
+                // 노드가 겹치지 않도록 설정
+                nodeDimensionsIncludeLabels: true 
+            },
+            
+            // 💡 노드와 엣지 스타일 정의
+            style: [
+                { // 모든 노드의 기본 스타일
+                    selector: 'node',
+                    style: {
+                        'label': 'data(label)',
+                        'text-valign': 'center',
+                        'color': '#333',
+                        'font-size': '12px',
+                        'font-weight': 'bold',
+                        'padding': '10px',
+                        'background-color': '#ecf0f1',
+                        'border-width': 2,
+                        'border-color': '#bdc3c7',
+                        'shape': 'roundrectangle',
+                        'transition-property': 'opacity',
+                        'transition-duration': '0.3s'
+                    }
+                },
+                { // 엣지(관계) 스타일
+                    selector: 'edge',
+                    style: {
+                        'width': 2,
+                        'curve-style': 'bezier',
+                        'target-arrow-shape': 'triangle',
+                        'target-arrow-color': '#95a5a6',
+                        'line-color': '#95a5a6',
+                        'label': 'data(label)',
+                        'font-size': '10px',
+                        'text-rotation': 'autorotate',
+                        'transition-property': 'opacity',
+                        'transition-duration': '0.3s'
+                    }
+                },
+                { // 클릭 시 강조 스타일 (highlighted 클래스)
+                    selector: '.highlighted',
+                    style: {
+                        'border-width': 4,
+                        'border-color': '#f39c12',
+                        'opacity': 1.0
+                    }
+                },
+                { // 흐리게 만드는 스타일 (dimmed 클래스)
+                    selector: '.dimmed',
+                    style: {
+                        'opacity': 0.15
+                    }
+                }
+            ]
+        });
+
+        statusDiv.textContent = `그래프에 ${elements.length}개 요소가 로드되었습니다. 노드를 클릭하여 관계를 탐색하세요.`;
+
+        // 💡 Protege 스타일 인터랙션 구현: 클릭한 노드와 이웃만 강조
+        cy.on('tap', 'node', function(evt){
+            const node = evt.target;
+            
+            // 1. 모든 요소를 초기 상태(dimmed)로 설정
+            cy.elements().removeClass('highlighted').addClass('dimmed');
+
+            // 2. 선택된 노드와 그 이웃만 강조 (highlighted)
+            const neighborhood = node.neighborhood();
+            
+            // 선택된 노드, 이웃 노드, 연결된 엣지를 모두 강조합니다.
+            node.removeClass('dimmed').addClass('highlighted');
+            neighborhood.removeClass('dimmed').addClass('highlighted');
+            
+            // (선택 사항: 클릭 시 해당 노드를 중심으로 확대)
+            // cy.animate({
+            //     fit: { eles: node.union(neighborhood), padding: 50 },
+            //     duration: 300
+            // });
+        });
+
+        // 그래프 외부를 클릭하면 전체 원래 상태로 복구
+        cy.on('tap', function(e){
+            if(e.target === cy){
+                cy.elements().removeClass('dimmed highlighted');
+            }
+        });
+    }
+
+    // 💡 analyzeFile 함수 수정: 백엔드로부터 받은 데이터 처리
     async function analyzeFile() {
         const fileInput = document.getElementById('fileInput');
         const file = fileInput.files[0];
@@ -62,10 +199,18 @@
 
             if (response.ok) {
                 loadingDiv.textContent = "분석 완료!";
+                
+                // 1. JSON 원본 출력 (디버깅용)
                 outputDiv.textContent = JSON.stringify(result.ontology_data, null, 2);
                 
-                // --- 다음 단계: 이 ontology_data를 시각화 함수로 전달하게 됩니다. ---
-                // renderGraph(result.ontology_data); 
+                // 2. 그래프 렌더링 (핵심)
+                if (result.graph_elements && result.graph_elements.length > 0) {
+                    renderGraph(result.graph_elements);
+                    document.getElementById('graph-status').textContent = "성공적으로 그래프를 생성했습니다. 노드를 클릭하여 세부 관계를 확인하세요.";
+                } else {
+                    document.getElementById('graph-status').textContent = "오류: Gemini가 온톨로지 요소를 추출하지 못했습니다.";
+                    renderGraph([]); // 빈 그래프로 초기화
+                }
 
             } else {
                 loadingDiv.textContent = "분석 실패!";
