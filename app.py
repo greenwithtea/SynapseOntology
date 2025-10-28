@@ -1,19 +1,31 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, render_template
 import google.generativeai as genai
 import os
 import json
 from docx import Document
-from dotenv import load_dotenv 
+from dotenv import load_dotenv
 import pdfplumber
-import rdflib 
-# from pdf2image import convert_from_path # OCR 사용 시 필요 (지금은 주석 처리)
+import rdflib # rdflib은 현재 다운로드 기능 구현 시 필요
+from collections import defaultdict
+import traceback # 상세 오류 출력을 위해 추가
+import re # 안전한 ID 생성을 위해 추가
 
 # --- 0. 환경 변수 로드 및 초기 설정 ---
-load_dotenv() 
+load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Gemini API 설정
-genai.configure(api_key=GEMINI_API_KEY)
+# API 키가 있는지 확인
+if not GEMINI_API_KEY:
+    print("오류: GEMINI_API_KEY 환경 변수가 설정되지 않았습니다.")
+    # 실제 배포 시에는 여기서 애플리케이션을 종료하거나 기본 키를 사용하도록 처리
+    # exit() # 예를 들어, 종료 처리
+
+try:
+    genai.configure(api_key=GEMINI_API_KEY)
+except Exception as e:
+    print(f"Gemini API 설정 오류: {e}")
+    # API 키 설정 실패 시 처리
 
 app = Flask(__name__)
 # 파일 업로드 및 다운로드를 위한 폴더 설정
@@ -35,19 +47,14 @@ def extract_text_from_file(file_path, file_type):
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text + "\n"
-                        # 첫 페이지 텍스트의 일부를 출력하여 추출 성공 여부 확인
-                        print(f"페이지 {i+1} 추출 성공: {page_text[:50]}...")
-                    else:
-                        print(f"페이지 {i+1} 텍스트 추출 실패 (빈 페이지일 수 있음)")
-        
+
         elif file_type == "docx":
             doc = Document(file_path)
             for para in doc.paragraphs:
                 text += para.text + "\n"
 
-        # API 호출 제한을 고려하여 텍스트 길이를 제한합니다.
-        return text[:30000] 
-        
+        return text[:30000] # Gemini API의 토큰 제한 고려
+
     except Exception as e:
         # 파일 인코딩 오류나 라이브러리 오류 발생 시 터미널에 출력
         print(f"❌ 텍스트 추출 중 치명적 오류 발생: {e}")
@@ -58,10 +65,10 @@ def extract_text_from_file(file_path, file_type):
 @app.route('/')
 def index():
     # templates 폴더의 index.html 파일을 렌더링
-    return render_template('index.html') 
+    return render_template('index.html')
 
 
-# --- 3. 핵심 기능: 파일 분석 및 개념 추출 (그래프 데이터 생성 로직 통합) ---
+# --- 3. 핵심 기능: 파일 분석 및 개념 추출 (JSON-LD 요청 프롬프트) ---
 @app.route('/analyze_file', methods=['POST'])
 def analyze_file():
     # 1. 파일 수신 및 유효성 검사
@@ -71,123 +78,336 @@ def analyze_file():
     if file.filename == '':
         return jsonify({"error": "유효한 파일이 선택되지 않았습니다."}), 400
 
-    file_ext = file.filename.rsplit('.', 1)[1].lower()
+    file_ext = ""
+    if '.' in file.filename:
+        file_ext = file.filename.rsplit('.', 1)[1].lower()
+
     if file_ext not in ['pdf', 'docx']:
         return jsonify({"error": "PDF 또는 DOCX 파일만 지원됩니다."}), 400
 
-    # 파일 저장 및 경로 설정
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(file_path)
+    try:
+        file.save(file_path)
+    except Exception as e:
+        print(f"파일 저장 오류: {e}")
+        return jsonify({"error": f"파일 저장 중 오류 발생: {e}"}), 500
 
-    # 2. 텍스트 추출
     extracted_text = extract_text_from_file(file_path, file_ext)
 
     if not extracted_text:
-        return jsonify({"error": "파일에서 텍스트를 추출하지 못했습니다. (빈 문서이거나 스캔된 이미지 기반 PDF일 수 있습니다.)"}), 500
+        if os.path.exists(file_path):
+            try: os.remove(file_path)
+            except Exception as e: print(f"임시 파일 삭제 오류: {e}")
+        return jsonify({"error": "파일에서 텍스트를 추출하지 못했습니다."}), 500
 
-    # 3. Gemini API 호출
+    # --- 3. Gemini API 호출 (프롬프트 수정) ---
+    # ⚠️ 중요: JSON 예시의 중괄호를 {{ }} 로 이스케이프 처리
     prompt = f"""
-    아래 텍스트를 분석하여 온톨로지 구축에 필요한 클래스, 속성, 인스턴스 관계를 JSON 형식으로 추출해줘. 
-    응답은 반드시 JSON 형식으로만 구성되어야 하며, 다른 설명은 포함하지 마.
+    Analyze the text below and extract an OWL ontology in JSON-LD format.
+    The response MUST be ONLY a JSON-LD array, with no other explanatory text.
 
-    예시 JSON 구조는 다음과 같습니다:
-    {{
-        "classes": ["Author", "Institution"],
-        "properties": [
-            {{"name": "hasWritten", "domain": "Author", "range": "Paper"}},
-            {{"name": "registeredBy", "domain": "Institution", "range": "ISNI"}}
-        ],
-        "relationships": [
-            {{"source": "NationalLibraryOfKorea", "target": "ISNI", "property": "manages"}},
-            {{"source": "SeungminLee", "target": "JournalPaper", "property": "hasWritten"}}
-        ],
-        "instances": [
-            {{"name": "NationalLibraryOfKorea", "class": "Institution"}},
-            {{"name": "SeungminLee", "class": "Author"}}
-        ]
-    }}
-    
-    텍스트: 
+    Each element must include the following properties:
+    - Classes: `@id` (unique URI), `@type: ["owl:Class"]`
+    - Object Properties: `@id`, `@type: ["owl:ObjectProperty"]`, `rdfs:domain` (class URI), `rdfs:range` (class URI), `owl:inverseOf` (URI if applicable)
+    - Datatype Properties: `@id`, `@type: ["owl:DatatypeProperty"]`, `rdfs:domain` (class URI), `rdfs:range` (XSD datatype URI, e.g., "xsd:string")
+    - Individuals (Instances): `@id`, `@type: ["owl:NamedIndividual", "Specific Class URI"]`, object property values (URI references), and datatype property values (using `@value`).
+
+    All `@id` URIs MUST use the namespace "http://www.semanticweb.org/my-ontology#".
+
+    Example JSON-LD structure:
+    [
+      {{{{  # 중괄호 두 번 사용
+        "@id": "http://www.semanticweb.org/my-ontology#Department",
+        "@type": ["owl:Class"]
+      }}}}, # 중괄호 두 번 사용
+      {{{{
+        "@id": "http://www.semanticweb.org/my-ontology#hasProfessor",
+        "@type": ["owl:ObjectProperty"],
+        "rdfs:domain": [{{{{ "@id": "http://www.semanticweb.org/my-ontology#Department" }}}}],
+        "rdfs:range": [{{{{ "@id": "http://www.semanticweb.org/my-ontology#Professor" }}}}]
+      }}}},
+      {{{{
+        "@id": "http://www.semanticweb.org/my-ontology#deptName",
+        "@type": ["owl:DatatypeProperty"],
+        "rdfs:domain": [{{{{ "@id": "http://www.semanticweb.org/my-ontology#Department" }}}}],
+        "rdfs:range": [{{{{ "@id": "xsd:string" }}}}]
+      }}}},
+      {{{{
+        "@id": "http://www.semanticweb.org/my-ontology#Dept001",
+        "@type": ["owl:NamedIndividual", "http://www.semanticweb.org/my-ontology#Department"],
+        "http://www.semanticweb.org/my-ontology#deptName": [{{{{ "@value": "Computer Science" }}}}],
+        "http://www.semanticweb.org/my-ontology#hasProfessor": [{{{{ "@id": "http://www.semanticweb.org/my-ontology#Prof001" }}}}]
+      }}}}
+    ]
+
+    Text to analyze:
     {extracted_text}
     """
-    
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        if not GEMINI_API_KEY:
+             raise ValueError("Gemini API Key is not configured.")
+
+        model = genai.GenerativeModel('gemini-2.0-flash') # 모델 유지
         response = model.generate_content(prompt)
-        
-        # JSON 정제 및 파싱
-        json_output_str = response.text.strip().replace('```json', '').replace('```', '')
-        ontology_data = json.loads(json_output_str) # Python 딕셔너리로 변환
 
-        # --- Cytoscape.js 시각화를 위한 데이터 구조 생성 ---
-        graph_elements = []
-        node_ids = set() # 노드 ID 중복을 방지하기 위한 세트
-        
-        # 클래스 정보 맵 생성 (노드 생성 시 클래스 이름 매핑을 위해)
-        instance_map = {inst.get('name'): inst.get('class') for inst in ontology_data.get('instances', []) if inst.get('name')}
-        
-        # 'relationships'를 순회하며 노드와 엣지를 동시에 생성 (가장 확실한 방법)
-        for i, rel in enumerate(ontology_data.get('relationships', [])):
-            source = rel.get('source')
-            target = rel.get('target')
-            property_name = rel.get('property')
-            
-            if source and target and property_name:
-                
-                # --- Source Node 추가 ---
-                if source not in node_ids:
-                    class_name = instance_map.get(source, "Unknown")
-                    graph_elements.append({
-                        'group': 'nodes',
-                        'data': {
-                            'id': source,
-                            'label': source,
-                            'class_name': class_name
-                        },
-                        # 클래스 이름으로 CSS 클래스를 지정하여 프론트엔드에서 스타일 적용
-                        'classes': f'cls_{class_name.replace(" ", "_")}' 
-                    })
-                    node_ids.add(source)
-                
-                # --- Target Node 추가 ---
-                if target not in node_ids:
-                    class_name = instance_map.get(target, "Unknown")
-                    graph_elements.append({
-                        'group': 'nodes',
-                        'data': {
-                            'id': target,
-                            'label': target,
-                            'class_name': class_name
-                        },
-                        'classes': f'cls_{class_name.replace(" ", "_")}'
-                    })
-                    node_ids.add(target)
+        # JSON 정제 및 파싱 (이제 JSON-LD 배열을 기대)
+        # 응답 텍스트가 비어있는 경우 처리
+        if not response.text:
+            raise ValueError("Gemini API returned an empty response.")
 
-                # --- Edge (관계) 추가 ---
-                edge_id = f"e{i}_{source}_{target}"
-                graph_elements.append({
-                    'group': 'edges',
-                    'data': {
-                        'id': edge_id,
-                        'source': source,
-                        'target': target,
-                        'label': property_name
-                    }
+        json_output_str = response.text.strip()
+        # 마크다운 코드 블록 제거
+        if json_output_str.startswith("```json"):
+            json_output_str = json_output_str[7:]
+        if json_output_str.endswith("```"):
+            json_output_str = json_output_str[:-3]
+
+        # ⚠️ 중요: Gemini 응답이 이제 단순 딕셔너리가 아닌 JSON-LD 배열일 수 있음
+        ontology_jsonld = json.loads(json_output_str) # JSON-LD 데이터를 파이썬 리스트/딕셔너리로 변환
+
+        # --- 4. 시각화 데이터 생성 로직 (JSON-LD 파싱) ---
+        class_elements = []
+        instance_elements = []
+        instance_map = {} # 인스턴스 URI와 클래스 URI 매핑
+        all_class_uris = set() # 모든 고유 클래스 URI를 저장할 세트
+        class_relations_map = defaultdict(lambda: defaultdict(set)) # 클래스 간 관계 추론용
+
+        # 안전한 ID 생성을 위한 함수 정의
+        def make_safe_id(uri_or_label):
+             # URI에서 '#' 이후 부분 추출, 없으면 전체 사용
+            name_part = uri_or_label.split('#')[-1] if isinstance(uri_or_label, str) and '#' in uri_or_label else uri_or_label
+            # ID에 사용할 수 없는 문자(공백, :, / 등)를 '_'로 변경
+            safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', str(name_part)) # 문자열로 변환
+            # 숫자로 시작하는 ID 방지
+            if safe_name and safe_name[0].isdigit():
+                safe_name = '_' + safe_name
+            # 빈 ID 또는 너무 짧은 ID 방지
+            return safe_name if safe_name else f"id_{os.urandom(4).hex()}"
+
+        # --- JSON-LD 파싱 및 데이터 구조화 시작 ---
+        for item in ontology_jsonld:
+            if not isinstance(item, dict):
+                print(f"경고: 유효하지 않은 JSON-LD 요소 (딕셔너리 아님): {item}")
+                continue
+
+            item_id = item.get("@id", f"bnode_{os.urandom(4).hex()}")
+            item_types = item.get("@type", [])
+            if not isinstance(item_types, list):
+                print(f"경고: '{item_id}'의 @type이 리스트가 아님: {item_types}")
+                item_types = []
+
+            # --- 클래스 URI 수집 (명시적 정의) ---
+            if "owl:Class" in item_types:
+                if isinstance(item_id, str) and item_id.startswith("http"): # 유효한 URI인지 확인
+                    all_class_uris.add(item_id)
+                # Subclass 관계도 클래스 URI로 추가
+                subclass_of = item.get("rdfs:subClassOf", [])
+                if isinstance(subclass_of, list):
+                    for parent in subclass_of:
+                        if isinstance(parent, dict) and parent.get("@id") and parent.get("@id").startswith("http"):
+                             all_class_uris.add(parent.get("@id"))
+
+
+            # --- 인스턴스 처리 및 클래스 URI 수집 ---
+            elif "owl:NamedIndividual" in item_types:
+                class_uri = next((t for t in item_types if t != "owl:NamedIndividual" and isinstance(t, str) and t.startswith("http")), None)
+                if class_uri:
+                    all_class_uris.add(class_uri)
+                    instance_map[item_id] = class_uri
+                else:
+                    default_class_uri = "http://www.semanticweb.org/network-ontology#Unknown"
+                    instance_map[item_id] = default_class_uri
+                    all_class_uris.add(default_class_uri)
+                    print(f"경고: 인스턴스 '{item_id}'에 유효한 클래스 URI가 없습니다. 'Unknown'으로 처리.")
+
+                label = item_id.split('#')[-1] if '#' in item_id else item_id
+                class_name = class_uri.split('#')[-1] if class_uri and '#' in class_uri else "Unknown"
+                safe_class_name = make_safe_id(class_name) # 안전한 클래스 이름
+
+                node_data = {
+                    'id': item_id, # Cytoscape ID는 전체 URI 사용
+                    'label': label,
+                    'class_name': class_name,
+                    'level': 'instance',
+                    'uri': item_id
+                }
+
+                # 데이터 속성 추가
+                for key, values in item.items():
+                    if key not in ["@id", "@type"] and isinstance(key, str) and key.startswith("http"):
+                        if isinstance(values, list) and values and isinstance(values[0], dict) and "@value" in values[0]:
+                            prop_name = key.split('#')[-1] if '#' in key else key
+                            safe_prop_name = make_safe_id(prop_name)
+                            node_data[safe_prop_name] = values[0]["@value"]
+
+                instance_elements.append({
+                    'group': 'nodes',
+                    'data': node_data,
+                    'classes': f'cls_{safe_class_name}' # CSS 클래스명도 안전하게
                 })
 
-        # 4. 프론트엔드로 분석 결과 및 시각화용 데이터를 JSON 객체로 반환
+            # 속성 정의에서 클래스 URI 수집
+            elif "owl:ObjectProperty" in item_types or "owl:DatatypeProperty" in item_types:
+                 domain_uris = [d.get("@id") for d in item.get("rdfs:domain", []) if isinstance(d, dict) and d.get("@id")]
+                 range_uris = [r.get("@id") for r in item.get("rdfs:range", []) if isinstance(r, dict) and r.get("@id") and not r.get("@id").startswith("xsd:")]
+                 all_class_uris.update(u for u in domain_uris if isinstance(u, str) and u.startswith("http"))
+                 all_class_uris.update(u for u in range_uris if isinstance(u, str) and u.startswith("http"))
+
+
+        # 인스턴스 관계 (엣지) 처리 및 클래스 관계 추론
+        edge_count_instance = 0
+        for item in ontology_jsonld:
+            if not isinstance(item, dict): continue
+            item_id = item.get("@id")
+            item_types = item.get("@type", [])
+            if not isinstance(item_types, list): item_types = []
+
+            if "owl:NamedIndividual" in item_types and item_id:
+                for prop_uri, targets in item.items():
+                    if isinstance(prop_uri, str) and prop_uri.startswith("http") and prop_uri not in ["@id", "@type"]:
+                         if isinstance(targets, list) and targets and isinstance(targets[0], dict) and "@id" in targets[0]:
+                            prop_label = prop_uri.split('#')[-1] if '#' in prop_uri else prop_uri
+                            safe_prop_label = make_safe_id(prop_label) # 안전한 라벨
+
+                            for target_ref in targets:
+                                target_id = target_ref.get("@id")
+                                if target_id and item_id in instance_map and target_id in instance_map:
+                                    safe_source_label = make_safe_id(item_id)
+                                    safe_target_label = make_safe_id(target_id)
+                                    # 엣지 ID에 랜덤 요소 추가하여 고유성 보장
+                                    edge_id = f"e{edge_count_instance}_{safe_source_label}_{safe_target_label}_{os.urandom(2).hex()}"
+
+
+                                    instance_elements.append({
+                                        'group': 'edges',
+                                        'data': {
+                                            'id': edge_id,
+                                            'source': item_id, # Cytoscape ID는 전체 URI
+                                            'target': target_id, # Cytoscape ID는 전체 URI
+                                            'label': prop_label # 표시는 원래 라벨
+                                        }
+                                    })
+                                    edge_count_instance += 1
+
+                                    source_class_uri = instance_map.get(item_id)
+                                    target_class_uri = instance_map.get(target_id)
+                                    if source_class_uri and target_class_uri and isinstance(source_class_uri, str) and isinstance(target_class_uri, str):
+                                        class_relations_map[source_class_uri][target_class_uri].add(prop_uri)
+
+            # ObjectProperty 정의에서 직접 클래스 관계 추가
+            elif "owl:ObjectProperty" in item_types and item_id:
+                 domain_uris = [d.get("@id") for d in item.get("rdfs:domain", []) if isinstance(d, dict) and d.get("@id")]
+                 range_uris = [r.get("@id") for r in item.get("rdfs:range", []) if isinstance(r, dict) and r.get("@id")]
+                 for domain_uri in domain_uris:
+                     for range_uri in range_uris:
+                          if isinstance(domain_uri, str) and isinstance(range_uri, str) and domain_uri.startswith("http") and range_uri.startswith("http"):
+                            class_relations_map[domain_uri][range_uri].add(item_id)
+
+
+        # --- 클래스 레벨 요소 생성 (보강된 로직) ---
+        class_node_map = {} # 클래스 URI와 노드 ID 매핑
+        # 모든 수집된 클래스 URI로 노드 생성
+        for cls_uri in all_class_uris:
+            if isinstance(cls_uri, str) and cls_uri.startswith("http"):
+                cls_label = cls_uri.split('#')[-1] if '#' in cls_uri else cls_uri
+                if not cls_label: continue
+
+                safe_cls_label = make_safe_id(cls_label)
+                cls_node_id = f"cls_{safe_cls_label}" # Cytoscape ID
+
+                class_node_map[cls_uri] = cls_node_id # 맵에 저장
+                class_elements.append({
+                    'group': 'nodes',
+                    'data': {
+                        'id': cls_node_id, # 안전한 ID 사용
+                        'label': cls_label,
+                        'class_name': cls_label,
+                        'level': 'class',
+                        'uri': cls_uri
+                    },
+                    'classes': f'cls_{safe_cls_label}' # CSS 클래스 적용
+                })
+
+        # 클래스 관계(subClassOf 포함) 및 ObjectProperty 정의를 엣지로 추가
+        edge_count_class = 0
+        processed_class_edges = set()
+
+        # 1. SubClassOf 관계 추가
+        for item in ontology_jsonld:
+             if not isinstance(item, dict): continue
+             item_id = item.get("@id")
+             item_types = item.get("@type", [])
+             if not isinstance(item_types, list): item_types = []
+
+             if "owl:Class" in item_types and item_id:
+                 subclass_of_list = item.get("rdfs:subClassOf", [])
+                 if isinstance(subclass_of_list, list):
+                     for parent_ref in subclass_of_list:
+                         if isinstance(parent_ref, dict) and parent_ref.get("@id"):
+                             parent_uri = parent_ref.get("@id")
+                             src_node_id = class_node_map.get(item_id) # 하위 클래스
+                             tgt_node_id = class_node_map.get(parent_uri) # 상위 클래스
+                             if src_node_id and tgt_node_id:
+                                 edge_label = "subClassOf"
+                                 # 엣지 ID에 랜덤 요소 추가 (같은 클래스 간 여러 subClassOf 방지 위해)
+                                 edge_signature = tuple(sorted((src_node_id, tgt_node_id))) + (edge_label,)
+                                 if edge_signature not in processed_class_edges:
+                                     safe_src_label = src_node_id.replace('cls_', '')
+                                     safe_tgt_label = tgt_node_id.replace('cls_', '')
+                                     edge_id = f"sub{edge_count_class}_{safe_src_label}_{safe_tgt_label}_{os.urandom(2).hex()}"
+                                     class_elements.append({'group': 'edges','data': {'id': edge_id,'source': src_node_id,'target': tgt_node_id,'label': edge_label}})
+                                     processed_class_edges.add(edge_signature)
+                                     edge_count_class += 1
+
+
+        # 2. ObjectProperty 기반 관계 추가 (추론된 것 + 정의된 것)
+        for src_cls_uri, targets in class_relations_map.items():
+             for tgt_cls_uri, prop_uris in targets.items():
+                 if isinstance(src_cls_uri, str) and isinstance(tgt_cls_uri, str):
+                     src_node_id = class_node_map.get(src_cls_uri)
+                     tgt_node_id = class_node_map.get(tgt_cls_uri)
+                     if src_node_id and tgt_node_id:
+                         # 관계 라벨 생성 (URI 유효성 검사 추가)
+                         prop_labels = sorted([p.split('#')[-1] for p in prop_uris if isinstance(p, str) and '#' in p])
+                         edge_label = ", ".join(prop_labels) if prop_labels else "relatedTo" # 라벨 없으면 기본값
+                         edge_signature = tuple(sorted((src_node_id, tgt_node_id))) + (edge_label,)
+                         if edge_signature not in processed_class_edges:
+                             safe_src_label = src_node_id.replace('cls_', '')
+                             safe_tgt_label = tgt_node_id.replace('cls_', '')
+                             # 엣지 ID에 랜덤 요소 추가
+                             edge_id = f"clse{edge_count_class}_{safe_src_label}_{safe_tgt_label}_{os.urandom(2).hex()}"
+                             class_elements.append({'group': 'edges','data': {'id': edge_id,'source': src_node_id,'target': tgt_node_id,'label': edge_label}})
+                             processed_class_edges.add(edge_signature)
+                             edge_count_class += 1
+
+        # 5. 프론트엔드로 분석 결과 및 시각화용 데이터를 JSON 객체로 반환
         return jsonify({
-            "message": "분석 성공 및 그래프 데이터 생성 완료",
-            "ontology_data": ontology_data, # Gemini 원본 JSON
-            "graph_elements": graph_elements # Cytoscape.js가 바로 사용할 수 있는 노드/엣지 배열
+            "message": "분석 성공 및 Ontograf 데이터 생성 완료",
+            "ontology_jsonld": ontology_jsonld,
+            "class_elements": class_elements,
+            "instance_elements": instance_elements
         }), 200
 
+    except ValueError as ve:
+         print(f"데이터 처리 오류: {ve}")
+         return jsonify({"error": f"데이터 처리 중 오류 발생: {ve}"}), 500
+    except json.JSONDecodeError as je:
+        print(f"JSON 파싱 오류: {je}")
+        print(f"Gemini 원본 응답:\n{response.text}") # 디버깅을 위해 원본 응답 출력
+        return jsonify({"error": f"Gemini 응답 JSON 파싱 실패: {je}. 원본 응답을 확인하세요."}), 500
     except Exception as e:
-        # API 호출 오류, JSON 파싱 오류 등을 처리
-        print(f"❌ API 호출 중 오류 발생: {e}")
-        return jsonify({"error": f"API 호출 또는 JSON 파싱 오류가 발생했습니다. (내용: {e})"}), 500
+        print(f"❌ API 호출 또는 서버 오류 발생: {e}")
+        traceback.print_exc() # 상세 스택 트레이스 출력
+        return jsonify({"error": f"API 호출 또는 서버 오류 발생: {e}"}), 500
+    finally:
+        # 작업 완료 후 임시 파일 삭제
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                print(f"임시 파일 삭제 오류: {e}")
 
 
 if __name__ == '__main__':
-    # .env 파일에서 환경 변수를 로드하도록 load_dotenv()가 이미 실행되었으므로 키를 안전하게 사용 가능.
+    # debug=True는 개발 중에만 사용하고, 실제 배포 시에는 False로 변경
     app.run(debug=True)
