@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session, send_file
+import io #io 모듈 추가
 import google.generativeai as genai
 import os
 import json
@@ -28,6 +29,7 @@ except Exception as e:
     # API 키 설정 실패 시 처리
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'synapse_key_for_session_2025_2'
 # 파일 업로드 및 다운로드를 위한 폴더 설정
 UPLOAD_FOLDER = 'uploads'
 DOWNLOAD_FOLDER = 'downloads'
@@ -41,7 +43,7 @@ def extract_text_from_file(file_path, file_type):
     text = ""
     try:
         if file_type == "pdf":
-            # pdfplumber를 사용한 추출 (안정성 높음)
+            # pdfplumber를 사용한 추출
             with pdfplumber.open(file_path) as pdf:
                 for page in pdf.pages:
                     page_text = page.extract_text()
@@ -100,7 +102,7 @@ def analyze_file():
             except Exception as e: print(f"임시 파일 삭제 오류: {e}")
         return jsonify({"error": "파일에서 텍스트를 추출하지 못했습니다."}), 500
 
-    # --- 3. Gemini API 호출 (프롬프트 수정) ---
+    # --- 2. Gemini API 호출 ---
     # ⚠️ 중요: JSON 예시의 중괄호를 {{ }} 로 이스케이프 처리
     prompt = f"""
     Analyze the text below and extract an OWL ontology in JSON-LD format.
@@ -150,7 +152,7 @@ def analyze_file():
         model = genai.GenerativeModel('gemini-2.0-flash') # 모델 유지
         response = model.generate_content(prompt)
 
-        # JSON 정제 및 파싱 (이제 JSON-LD 배열을 기대)
+        # JSON 정제 및 파싱
         # 응답 텍스트가 비어있는 경우 처리
         if not response.text:
             raise ValueError("Gemini API returned an empty response.")
@@ -161,6 +163,9 @@ def analyze_file():
             json_output_str = json_output_str[7:]
         if json_output_str.endswith("```"):
             json_output_str = json_output_str[:-3]
+
+        # --- 세션에 원본 JSON-LD (문자열) 저장 ---
+        session['ontology_jsonld_string'] = json_output_str
 
         # ⚠️ 중요: Gemini 응답이 이제 단순 딕셔너리가 아닌 JSON-LD 배열일 수 있음
         ontology_jsonld = json.loads(json_output_str) # JSON-LD 데이터를 파이썬 리스트/딕셔너리로 변환
@@ -407,6 +412,90 @@ def analyze_file():
             except Exception as e:
                 print(f"임시 파일 삭제 오류: {e}")
 
+# --- 4. 파일 다운로드 기능 엔드포인트 (수정됨) ---
+@app.route('/download/<string:file_format>')
+def download_ontology_file(file_format):
+    # 1. 세션에서 분석 결과(JSON-LD 문자열) 가져오기
+    jsonld_string = session.get('ontology_jsonld_string', None)
+    
+    if not jsonld_string:
+        return jsonify({"error": "먼저 파일을 분석해야 합니다. 세션 데이터가 없습니다."}), 400
+
+    try:
+        # 2. 요청된 파일 형식에 따라 데이터 변환
+        
+        # JSON-LD 형식 (.jsonld) 요청 시 (원본 그대로 반환)
+        if file_format == 'jsonld':
+            file_data = io.BytesIO(jsonld_string.encode('utf-8'))
+            mimetype = 'application/ld+json'
+            filename = 'ontology.jsonld'
+
+        # OWL, RDF, Turtle 형식 요청 시 (rdflib 변환)
+        else:
+            # rdflib 그래프 생성
+            g = rdflib.Graph()
+            # 세션의 JSON-LD 문자열을 그래프로 파싱
+            # (네임스페이스 바인딩을 위해 원본 JSON-LD 파싱)
+            try:
+                g.parse(data=jsonld_string, format='json-ld')
+            except Exception as e:
+                print(f"rdflib 파싱 오류: {e}. 원본 JSON-LD를 확인하세요.")
+                # 파싱 실패 시 기본 그래프 반환 (또는 오류 처리)
+                pass # 빈 그래프라도 직렬화 시도
+            
+            # --- 💡 수정된 부분 시작 💡 ---
+            
+            # 요청 형식에 맞게 직렬화(serialize) 포맷 및 파일 이름 결정
+            if file_format == 'owl':
+                # OWL (RDF/XML 형식으로 직렬화, 확장자만 .owl)
+                output_format = 'xml' 
+                mimetype = 'application/rdf+xml'
+                filename = 'ontology.owl' # <--- .owl로 변경
+                
+            elif file_format == 'rdf':
+                # RDF/XML 형식
+                output_format = 'xml' 
+                mimetype = 'application/rdf+xml'
+                filename = 'ontology.rdf' # <--- .rdf 유지
+                
+            # --- 💡 수정된 부분 끝 💡 ---
+                
+            elif file_format == 'ttl':
+                # Turtle 형식
+                output_format = 'turtle'
+                mimetype = 'text/turtle'
+                filename = 'ontology.ttl'
+            else:
+                return jsonify({"error": "지원하지 않는 형식입니다."}), 400
+
+            # 3. 그래프를 메모리 버퍼에 직렬화
+            file_data = io.BytesIO()
+            try:
+                # rdflib이 지원하는 네임스페이스 자동 바인딩을 위해 'xml' 대신 'pretty-xml' 사용 고려
+                if output_format == 'xml':
+                    output_format = 'pretty-xml' # 더 읽기 좋은 XML 형식
+                    
+                g.serialize(destination=file_data, format=output_format, encoding='utf-8')
+            except Exception as e:
+                 print(f"rdflib 직렬화 오류: {e}")
+                 # 직렬화 실패 시 (예: 'pretty-xml' 미지원 시) 기본 'xml'로 재시도
+                 file_data = io.BytesIO() # 버퍼 초기화
+                 g.serialize(destination=file_data, format='xml', encoding='utf-8')
+                 
+            file_data.seek(0) # 버퍼의 처음으로 포인터 이동
+
+        # 4. 파일 전송
+        return send_file(
+            file_data,
+            mimetype=mimetype,
+            as_attachment=True, # 첨부 파일로 다운로드하도록 설정
+            download_name=filename # 사용자에게 보여질 파일 이름
+        )
+
+    except Exception as e:
+        print(f"❌ 파일 변환/전송 오류: {e}")
+        traceback.print_exc()
+        return jsonify({"error": f"파일 생성 중 오류 발생: {e}"}), 500
 
 if __name__ == '__main__':
     # debug=True는 개발 중에만 사용하고, 실제 배포 시에는 False로 변경

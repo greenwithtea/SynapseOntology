@@ -1,456 +1,553 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gemini 기반 온톨로지 분석 및 시각화 도구</title>
-    <!-- Cytoscape.js 라이브러리 로드 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
     <style>
-        /* 기본 스타일 */
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f0f2f5; color: #333; }
-        #container { max-width: 1400px; margin: 20px auto; background-color: #fff; border-radius: 12px; box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1); display: flex; min-height: 80vh; }
-        #main-content { flex-grow: 1; padding: 30px; overflow: hidden; }
-        #sidebar { width: 300px; padding: 30px 20px; background-color: #ecf0f1; border-left: 1px solid #ddd; border-top-right-radius: 12px; border-bottom-right-radius: 12px; flex-shrink: 0; }
-        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; margin-top: 0; font-weight: 600; }
-        h2 { color: #34495e; font-size: 1.3em; margin-top: 20px; border-bottom: 1px dashed #ccc; padding-bottom: 5px; }
-        .control-section { margin-bottom: 25px; }
-        #fileInput { margin-right: 15px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        button { background-color: #2ecc71; color: white; padding: 10px 18px; border: none; border-radius: 6px; cursor: pointer; transition: background-color 0.3s, transform 0.1s; font-weight: bold; }
-        button:hover { background-color: #27ae60; transform: translateY(-1px); }
-        #output { background-color: #f8f8f8; padding: 15px; border-radius: 6px; overflow-x: auto; max-height: 250px; white-space: pre-wrap; font-family: Consolas, monospace; font-size: 12px; border: 1px solid #eee; }
-        #loading { color: #e67e22; font-weight: bold; margin-left: 10px; }
-        #graph-container { width: 100%; height: 600px; border: 1px solid #3498db; background-color: #fcfcfc; border-radius: 6px; margin-top: 15px; position: relative; }
-        #tooltip { position: absolute; background-color: rgba(0, 0, 0, 0.8); color: white; padding: 6px 12px; border-radius: 4px; pointer-events: none; z-index: 1000; opacity: 0; transition: opacity 0.2s; font-size: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); max-width: 250px; word-wrap: break-word; }
-        .download-link { color: #3498db; text-decoration: none; display: block; margin-bottom: 5px; }
-        .download-link:hover { text-decoration: underline; }
+        :root {
+            --primary: #2f80ed;
+            --secondary: #00bfa6;
+            --bg-light: #f9fafc;
+            --bg-card: #ffffff;
+            --text-dark: #2c3e50;
+            --border-color: #e5e8ec;
+        }
+
+        body {
+            font-family: 'Inter', 'Noto Sans KR', sans-serif;
+            margin: 0;
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            line-height: 1.6;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: #fff;
+            padding: 2rem;
+            text-align: center;
+            border-bottom-left-radius: 1rem;
+            border-bottom-right-radius: 1rem;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        main {
+            display: flex;
+            flex-wrap: wrap;
+            max-width: 1400px;
+            margin: 2rem auto;
+            background-color: var(--bg-card);
+            border-radius: 12px;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+        }
+
+        section {
+            flex: 1;
+            min-width: 700px;
+            padding: 2rem;
+        }
+
+        aside {
+            width: 340px;
+            background: rgba(255,255,255,0.8);
+            backdrop-filter: blur(8px);
+            border-left: 1px solid var(--border-color);
+            padding: 2rem 1.5rem;
+        }
+
+        h2 {
+            font-size: 1.2rem;
+            border-left: 4px solid var(--primary);
+            padding-left: 10px;
+            font-weight: 600;
+            color: var(--text-dark);
+            margin-top: 2rem;
+        }
+
+        .card {
+            background: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-top: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        input[type="file"] {
+            padding: 0.6rem;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            margin-right: 10px;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.3s, transform 0.1s;
+        }
+
+        button:hover {
+            background-color: #1b64d0;
+            transform: translateY(-1px);
+        }
+
+        pre {
+            background-color: #f5f7fa;
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            font-family: 'Consolas', monospace;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+            max-height: 250px;
+        }
+
+        #graph-container {
+            height: 600px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background-color: #fff;
+            position: relative;
+            margin-top: 1rem;
+        }
+
+        #zoom-controls-vertical {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 1001;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+            padding: 10px;
+        }
+
+        #zoomSliderV {
+            -webkit-appearance: slider-vertical;
+            appearance: slider-vertical;
+            width: 20px;
+            height: 180px;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        #tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.75);
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 4px;
+            opacity: 0;
+            font-size: 0.85rem;
+            transition: opacity 0.2s;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        .download-link {
+            display: block;
+            color: var(--primary);
+            text-decoration: none;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .download-link:hover {
+            text-decoration: underline;
+        }
+
+        aside pre {
+            background: rgba(255,255,255,0.9);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.8rem;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+        }
+
+        footer {
+            text-align: center;
+            padding: 1rem;
+            font-size: 0.85rem;
+            color: #777;
+        }
+
+        @media (max-width: 1024px) {
+            main {
+                flex-direction: column;
+            }
+            aside {
+                width: 100%;
+                border-left: none;
+                border-top: 1px solid var(--border-color);
+            }
+        }
+        
+        /* 추가된 디자인 */
+        .card button { width: 100%; margin-top: 1rem; }
+        .card input[type="file"] { width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+        .card #loading { display: block; text-align: center; margin-top: 10px; font-style: italic; }
     </style>
 </head>
+
 <body>
+    <header>
+        <h1>Gemini 기반 온톨로지 분석 및 시각화 도구</h1>
+    </header>
 
-<div id="container">
-    <div id="main-content">
-        <h1>Gemini 기반 온톨로지 분석 및 시각화</h1>
-
-        <div class="control-section">
+    <main>
+        <section>
             <h2>1. 파일 업로드 및 분석</h2>
-            <input type="file" id="fileInput" accept=".pdf,.docx">
-            <!-- ⚠️ 수정: onclick 제거, ID 추가 -->
-            <button id="analyzeButton">분석 및 개념 추출 시작</button>
-            <span id="loading"></span>
-        </div>
+            <div class="card">
+                <input type="file" id="fileInput" accept=".pdf,.docx" />
+                <button id="analyzeButton">분석 및 개념 추출 시작</button>
+                <span id="loading"></span>
+            </div>
 
-        <div class="control-section">
             <h2>2. 분석 결과 (Gemini JSON-LD)</h2>
-            <pre id="output">파일을 업로드하면 Gemini API의 분석 결과가 여기에 표시됩니다.</pre>
-        </div>
+            <div class="card">
+                <pre id="output">파일을 업로드하면 Gemini API의 분석 결과가 여기에 표시됩니다.</pre>
+            </div>
 
-        <div class="control-section">
-            <h2>3. 온톨로지 그래프 시각화 (더블 클릭으로 확장/축소)</h2>
-            <div id="graph-container"></div>
-            <div id="tooltip"></div>
-            <p id="graph-status"></p> <!-- 그래프 상태 메시지용 -->
-        </div>
-    </div>
+            <h2>3. 온톨로지 그래프 시각화</h2>
+            <div class="card">
+                <div id="graph-container">
+                    <div id="tooltip"></div>
+                    <div id="zoom-controls-vertical">
+                        <input type="range" id="zoomSliderV" min="0.1" max="3.0" step="0.05" value="1.0" orient="vertical" />
+                    </div>
+                </div>
+                <p id="graph-status"></p>
+            </div>
 
-    <div id="sidebar">
-        <h2>4. 다운로드 및 정보</h2>
-        <div class="control-section">
+            <!-- 💡 [위치 이동] "선택된 요소 정보" 섹션을 사이드바에서 메인 콘텐츠로 이동 -->
+            <h2>선택된 요소 정보</h2>
+            <div class="card">
+                <pre id="info-panel">그래프 요소를 클릭하여 상세 정보를 확인하세요.</pre>
+            </div>
+            <!-- -------------------------------------------------- -->
+
+        </section>
+
+        <aside>
+            <h2>4. 다운로드 및 정보</h2>
             <p><strong>그래프 레벨:</strong> <span id="current-level">클래스 레벨</span></p>
-            <h3>파일 다운로드 (준비 중)</h3>
-            <ul id="download-list" style="list-style-type: none; padding: 0;">
-                <li><a href="#" id="link-owl" class="download-link" data-format="owl">OWL (.owl)</a></li>
-                <li><a href="#" id="link-rdf" class="download-link" data-format="rdf">RDF/XML (.rdf)</a></li>
-                <li><a href="#" id="link-ttl" class="download-link" data-format="ttl">Turtle (.ttl)</a></li>
-                <li><a href="#" id="link-jsonld" class="download-link" data-format="jsonld">JSON-LD</a></li>
-            </ul>
-        </div>
-        <div class="control-section">
-            <h3>선택된 요소 정보</h3>
-            <pre id="info-panel">그래프 요소를 클릭하여 상세 정보를 확인하세요.</pre>
-        </div>
-    </div>
-</div>
+            <div>
+                <h3>파일 다운로드</h3>
+                <a href="#" id="link-owl" class="download-link">OWL (.owl)</a>
+                <a href="#" id="link-rdf" class="download-link">RDF/XML (.rdf)</a>
+                <a href="#" id="link-ttl" class="download-link">Turtle (.ttl)</a>
+                <a href="#" id="link-jsonld" class="download-link">JSON-LD</a>
+            </div>
+            
+            <!-- 💡 [위치 이동] "선택된 요소 정보" 섹션이 여기에서 제거되었습니다. -->
+            
+        </aside>
+    </main>
 
-<script>
-    // --- DOMContentLoaded 이벤트 리스너 추가 ---
-    // HTML 문서가 완전히 로드된 후에 이 안의 코드가 실행됩니다.
-    document.addEventListener('DOMContentLoaded', function() {
+    <footer>
+        © 2025 Gemini Ontology Visualization Tool
+    </footer>
 
-        // --- 1. 전역 변수 및 상태 관리 ---
-        let cy; // Cytoscape.js 인스턴스
-        let allClassElements = []; // 클래스 레벨 데이터 저장
-        let allInstanceElements = []; // 인스턴스 레벨 데이터 저장
-        let currentLevel = 'class'; // 현재 표시 레벨 ('class' 또는 'instance')
+    <!-- 💡 JavaScript 로직은 수정할 필요 없이 그대로 작동합니다. -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
 
-        const CLASS_LEVEL = 'class';
-        const INSTANCE_LEVEL = 'instance';
+            // --- 1. 전역 변수 및 상태 관리 ---
+            let cy; 
+            let allClassElements = []; 
+            let allInstanceElements = []; 
+            let currentLevel = 'class'; 
+            const CLASS_LEVEL = 'class';
+            const INSTANCE_LEVEL = 'instance';
 
-        // HTML 요소 참조 (DOM 로드 후 초기화)
-        const fileInput = document.getElementById('fileInput');
-        const analyzeButton = document.getElementById('analyzeButton'); // ID로 버튼 참조
-        const outputDiv = document.getElementById('output');
-        const loadingDiv = document.getElementById('loading');
-        const tooltipDiv = document.getElementById('tooltip');
-        const graphContainer = document.getElementById('graph-container');
-        const graphStatus = document.getElementById('graph-status');
-        const currentLevelSpan = document.getElementById('current-level');
-        const infoPanel = document.getElementById('info-panel');
+            // HTML 요소 참조 (DOM 로드 후 초기화)
+            const fileInput = document.getElementById('fileInput');
+            const analyzeButton = document.getElementById('analyzeButton');
+            const outputDiv = document.getElementById('output');
+            const loadingDiv = document.getElementById('loading');
+            const tooltipDiv = document.getElementById('tooltip');
+            const graphContainer = document.getElementById('graph-container');
+            const graphStatus = document.getElementById('graph-status');
+            const currentLevelSpan = document.getElementById('current-level');
+            const infoPanel = document.getElementById('info-panel'); // ID가 동일하므로 정상 작동
+            const zoomSliderV = document.getElementById('zoomSliderV');
+            
+            // --- 줌 슬라이더 이벤트 리스너 ---
+            zoomSliderV.addEventListener('input', function() {
+                if (cy) {
+                    const min = parseFloat(this.min);
+                    const max = parseFloat(this.max);
+                    const val = parseFloat(this.value);
+                    const zoomLevel = max - val + min; 
+                    cy.zoom(zoomLevel);
+                }
+            });
+            
+            // --- 슬라이더 드래그 시 캔버스 패닝 방지 ---
+            zoomSliderV.addEventListener('mousedown', function(event) {
+                event.stopPropagation();
+            });
+            zoomSliderV.addEventListener('touchstart', function(event) {
+                 event.stopPropagation();
+            });
 
-        // --- 2. 백엔드 통신 및 데이터 로딩 ---
-        async function analyzeFile() {
-            const file = fileInput.files[0];
+            // --- 2. 백엔드 통신 (analyzeFile 함수) ---
+            async function analyzeFile() {
+                const file = fileInput.files[0];
+                if (!file) { outputDiv.textContent = "오류: PDF 또는 DOCX 파일을 선택해주세요."; return; }
+                loadingDiv.textContent = "파일 업로드 및 Gemini 분석 중입니다... (잠시만 기다려주세요)";
+                
+                if (cy) { cy.destroy(); cy = null; }
+                
+                graphStatus.textContent = ""; 
+                infoPanel.textContent = "요소를 클릭하여 상세 정보를 확인하세요.";
+                currentLevelSpan.textContent = "분석 중...";
+                outputDiv.textContent = "분석 결과를 기다리는 중...";
 
-            // UI 초기화 및 로딩 상태 표시
-            if (!file) {
-                outputDiv.textContent = "오류: PDF 또는 DOCX 파일을 선택해주세요.";
-                return;
-            }
-            // 로딩 상태 표시
-            loadingDiv.textContent = "파일 업로드 및 Gemini 분석 중입니다... (잠시만 기다려주세요)";
-            // 이전 그래프/상태 초기화
-            if (cy) {
-                 cy.destroy(); // 분석 시작 시 이전 그래프 제거
-                 cy = null; // 인스턴스 참조 제거
-            }
-            graphContainer.innerHTML = ''; // 그래프 영역 초기화
-            infoPanel.textContent = "요소를 클릭하여 상세 정보를 확인하세요.";
-            currentLevelSpan.textContent = "분석 중...";
-            graphStatus.textContent = "";
-            outputDiv.textContent = "분석 결과를 기다리는 중..."; // 결과 영역 초기화
+                const formData = new FormData();
+                formData.append('file', file);
+                try {
+                    const response = await fetch('/analyze_file', { method: 'POST', body: formData });
+                    const result = await response.json();
 
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                const response = await fetch('/analyze_file', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    loadingDiv.textContent = "분석 완료!";
-                    // JSON-LD 원본 데이터를 출력 (데이터 구조 확인용)
-                    outputDiv.textContent = JSON.stringify(result.ontology_jsonld, null, 2);
-
-                    // 백엔드에서 받은 분리된 데이터 저장 (데이터 없으면 빈 배열)
-                    allClassElements = result.class_elements || [];
-                    allInstanceElements = result.instance_elements || [];
-
-                    // 초기 그래프 렌더링 (클래스 레벨로 시작)
-                    currentLevel = CLASS_LEVEL;
-                    renderGraph(allClassElements);
-                    currentLevelSpan.textContent = "클래스 레벨";
-
-                } else {
-                    // 서버에서 보낸 오류 메시지 표시
-                    loadingDiv.textContent = "분석 실패!";
-                    outputDiv.textContent = `서버 오류 발생: ${result.error}`;
+                    if (response.ok) {
+                        loadingDiv.textContent = "분석 완료!";
+                        outputDiv.textContent = JSON.stringify(result.ontology_jsonld, null, 2);
+                        allClassElements = result.class_elements || [];
+                        allInstanceElements = result.instance_elements || [];
+                        currentLevel = CLASS_LEVEL;
+                        renderGraph(allClassElements); 
+                        currentLevelSpan.textContent = "클래스 레벨";
+                        
+                        document.getElementById('link-owl').href = '/download/owl';
+                        document.getElementById('link-rdf').href = '/download/rdf';
+                        document.getElementById('link-ttl').href = '/download/ttl';
+                        document.getElementById('link-jsonld').href = '/download/jsonld';
+                        document.querySelector('aside div h3').textContent = "파일 다운로드";
+                    } else {
+                        loadingDiv.textContent = "분석 실패!";
+                        outputDiv.textContent = `서버 오류 발생: ${result.error}`;
+                        currentLevelSpan.textContent = "오류 발생";
+                    }
+                } catch (e) {
+                    loadingDiv.textContent = "네트워크 오류!";
+                    outputDiv.textContent = `클라이언트 측 오류: ${e.message}`;
                     currentLevelSpan.textContent = "오류 발생";
                 }
-            } catch (e) {
-                // 네트워크 또는 JavaScript 자체 오류 처리
-                loadingDiv.textContent = "네트워크 오류!";
-                outputDiv.textContent = `클라이언트 측 오류: ${e.message}`;
-                currentLevelSpan.textContent = "오류 발생";
             }
-        }
 
-        // --- 3. Cytoscape.js 스타일 정의 ---
-        const getStyles = () => {
-             // (스타일 정의 코드는 이전 답변과 동일 - 변경 없음)
-             // ... [스타일 코드 시작] ...
-             return [
-                { // 노드 기본 스타일 (크기 조정)
-                    selector: 'node',
-                    style: {
-                        'label': 'data(label)',
-                        'text-valign': 'center',
-                        'color': '#333',
-                        'font-size': '11px',
-                        'font-weight': 'bold', // 폰트 굵게
-                        'padding': '6px', // 내부 여백 축소
-                        'width': 'label', // 너비를 라벨 길이에 맞춤
-                        'height': 'label', // 높이를 라벨 길이에 맞춤
-                        'text-wrap': 'wrap', // 긴 라벨 줄바꿈
-                        'text-max-width': '100px', // 최대 너비
-                        'background-color': '#dfe4ea',
-                        'border-width': 1,
-                        'border-color': '#a4b0be',
-                        'shape': 'round-rectangle', // 기본 모양
-                        'transition-property': 'opacity, background-color, border-color',
-                        'transition-duration': '0.2s'
-                    }
-                },
-                // 클래스 노드 스타일 (크고 둥근 사각형)
-                { selector: 'node[level="class"]', style: { 'font-size': '14px', 'padding': '12px', 'shape': 'round-rectangle', 'background-color': '#BDC3C7' } },
-                // 인스턴스 노드 스타일 (클래스별 색상)
-                // ⚠️ 주의: 백엔드에서 생성된 CSS 클래스명과 일치해야 함 (cls_Class_Name 형식)
-                { selector: '.cls_Author', style: { 'background-color': '#3498db', 'border-color': '#2980b9', 'color': 'white' } },
-                { selector: '.cls_Institution', style: { 'background-color': '#2ecc71', 'border-color': '#27ae60', 'color': 'white' } },
-                { selector: '.cls_Paper', style: { 'background-color': '#f1c40f', 'border-color': '#f39c12', 'color': '#333' } },
-                { selector: '.cls_ISNI', style: { 'background-color': '#9b59b6', 'border-color': '#8e44ad', 'color': 'white' } },
-                { selector: '.cls_Unknown', style: { 'background-color': '#7f8c8d', 'border-color': '#95a5a6', 'color': 'white' } },
-                // 다른 클래스 스타일 추가 가능 (예시)
-                { selector: '.cls_Department', style: { 'background-color': '#1abc9c', 'border-color': '#16a085', 'color': 'white' } },
-                 { selector: '.cls_Professor', style: { 'background-color': '#e74c3c', 'border-color': '#c0392b', 'color': 'white' } },
-                 { selector: '.cls_Student', style: { 'background-color': '#34495e', 'border-color': '#2c3e50', 'color': 'white' } },
-                 // 예시: 네트워크 관련 클래스 스타일 추가
-                 { selector: '.cls_ErrorControlTechnique', style: { 'background-color': '#e67e22', 'border-color': '#d35400', 'color': 'white' } },
-                 { selector: '.cls_ARQ', style: { 'background-color': '#f39c12', 'border-color': '#e67e22', 'color': 'white' } },
-                 { selector: '.cls_DataLinkLayerProtocol', style: { 'background-color': '#16a085', 'border-color': '#1abc9c', 'color': 'white' } },
+            // --- 3. Cytoscape.js 스타일 정의 ---
+            const getStyles = () => {
+                // (스타일 정의 코드는 변경 없음)
+                return [
+                    { selector: 'node', style: { 'label': 'data(label)', 'text-valign': 'center', 'color': '#333', 'font-size': '11px', 'font-weight': 'bold', 'padding': '6px', 'width': 'label', 'height': 'label', 'text-wrap': 'wrap', 'text-max-width': '100px', 'background-color': '#dfe4ea', 'border-width': 1, 'border-color': '#a4b0be', 'shape': 'round-rectangle', 'transition-property': 'opacity, background-color, border-color', 'transition-duration': '0.2s' } },
+                    { selector: 'node[level="class"]', style: { 'font-size': '14px', 'padding': '12px', 'shape': 'round-rectangle', 'background-color': '#BDC3C7' } },
+                    { selector: '.cls_Author', style: { 'background-color': '#3498db', 'border-color': '#2980b9', 'color': 'white' } },
+                    { selector: '.cls_Institution', style: { 'background-color': '#2ecc71', 'border-color': '#27ae60', 'color': 'white' } },
+                    { selector: '.cls_Paper', style: { 'background-color': '#f1c40f', 'border-color': '#f39c12', 'color': 'white' } },
+                    { selector: '.cls_ISNI', style: { 'background-color': '#9b59b6', 'border-color': '#8e44ad', 'color': 'white' } },
+                    { selector: '.cls_Unknown', style: { 'background-color': '#7f8c8d', 'border-color': '#95a5a6', 'color': 'white' } },
+                    { selector: '.cls_Department', style: { 'background-color': '#1abc9c', 'border-color': '#16a085', 'color': 'white' } },
+                    { selector: '.cls_Professor', style: { 'background-color': '#e74c3c', 'border-color': '#c0392b', 'color': 'white' } },
+                    { selector: '.cls_Student', style: { 'background-color': '#34495e', 'border-color': '#2c3e50', 'color': 'white' } },
+                    { selector: '.cls_ErrorControlTechnique', style: { 'background-color': '#e67e22', 'border-color': '#d35400', 'color': 'white' } },
+                    { selector: '.cls_ARQ', style: { 'background-color': '#f39c12', 'border-color': '#e67e22', 'color': 'white' } },
+                    { selector: '.cls_DataLinkLayerProtocol', style: { 'background-color': '#16a085', 'border-color': '#1abc9c', 'color': 'white' } },
+                    { selector: 'edge', style: { 'width': 1.5, 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'target-arrow-color': '#57606f', 'line-color': '#a4b0be', 'opacity': 0.7, 'font-size': '9px', 'label': 'data(label)', 'color': '#2f3542', 'text-rotation': 'autorotate', 'text-background-opacity': 0.85, 'text-background-color': '#ffffff', 'text-background-shape': 'roundrectangle', 'text-background-padding': '2px', 'transition-property': 'opacity, line-color, target-arrow-color', 'transition-duration': '0.2s' } },
+                    { selector: 'edge:hover', style: { 'line-color': '#e74c3c', 'target-arrow-color': '#e74c3c', 'opacity': 1.0, 'width': 2.5 } },
+                    { selector: '.highlighted', style: { 'opacity': 1.0, 'border-width': 3, 'border-color': '#e74c3c' } },
+                    { selector: 'edge.highlighted', style: { 'line-color': '#e74c3c', 'target-arrow-color': '#e74c3c', 'width': 3, 'opacity': 1.0 } },
+                    { selector: '.faded', style: { 'opacity': 0.1 } }
+                ];
+            };
 
-
-                { // 엣지(관계) 기본 스타일 (화살표, 레이블 표시)
-                    selector: 'edge',
-                    style: {
-                        'width': 1.5,
-                        'curve-style': 'bezier',
-                        'target-arrow-shape': 'triangle', // 화살표 모양
-                        'target-arrow-color': '#57606f', // 화살표 색상
-                        'line-color': '#a4b0be', // 라인 색상
-                        'opacity': 0.7,
-                        'font-size': '9px',
-                        'label': 'data(label)', // 관계 레이블 표시
-                        'color': '#2f3542',
-                        'text-rotation': 'autorotate',
-                        'text-background-opacity': 0.85, // 배경 약간 더 불투명
-                        'text-background-color': '#ffffff',
-                        'text-background-shape': 'roundrectangle',
-                        'text-background-padding': '2px',
-                        'transition-property': 'opacity, line-color, target-arrow-color',
-                        'transition-duration': '0.2s'
-                    }
-                },
-                { // 엣지 마우스 오버 시 스타일
-                    selector: 'edge:hover',
-                    style: { 'line-color': '#e74c3c', 'target-arrow-color': '#e74c3c', 'opacity': 1.0, 'width': 2.5 }
-                },
-                { // 강조된 노드 스타일
-                    selector: '.highlighted', style: { 'opacity': 1.0, 'border-width': 3, 'border-color': '#e74c3c' }
-                },
-                { // 강조된 엣지 스타일
-                    selector: 'edge.highlighted', style: { 'line-color': '#e74c3c', 'target-arrow-color': '#e74c3c', 'width': 3, 'opacity': 1.0 }
-                },
-                { // 흐리게 처리된 요소
-                    selector: '.faded', style: { 'opacity': 0.1 }
+            // --- 4. 그래프 렌더링 함수 ---
+            function renderGraph(elements) {
+                if (cy) { cy.stop(true, true); cy.destroy(); cy = null; }
+                
+                if (!elements || elements.length === 0) {
+                    graphStatus.textContent = "그래프를 그릴 데이터 요소가 없습니다.";
+                    return; 
+                } else {
+                    graphStatus.textContent = ""; 
                 }
-            ];
-             // ... [스타일 코드 끝] ...
-        };
 
-        // --- 4. 그래프 렌더링 함수 ---
-        function renderGraph(elements) {
-            // 기존 그래프 인스턴스 제거
-            if (cy) {
-                cy.stop(true, true);
-                cy.destroy();
-                cy = null; // 참조 제거
+                try {
+                    cy = cytoscape({
+                        container: graphContainer,
+                        elements: elements,
+                        layout: { 
+                            name: 'cose', 
+                            animate: 'end', 
+                            animationDuration: 400, 
+                            nodeDimensionsIncludeLabels: true, 
+                            idealEdgeLength: (ele) => ele.data('level') === 'class' ? 150 : 80, 
+                            nodeOverlap: 25, 
+                            padding: 30 
+                        },
+                        style: getStyles(),
+                        minZoom: 0.1,
+                        maxZoom: 3.0,
+                        wheelSensitivity: 0, // 마우스 휠 줌 비활성화
+                        userPanningEnabled: true,
+                        userZoomingEnabled: true
+                    });
+                    
+                    const min = parseFloat(zoomSliderV.min);
+                    const max = parseFloat(zoomSliderV.max);
+                    zoomSliderV.value = max - cy.zoom() + min;
+
+                    setupInteractions(); 
+
+                } catch (error) {
+                     console.error("Cytoscape 렌더링 오류:", error);
+                     graphStatus.textContent = `그래프 렌더링 중 오류 발생: ${error.message}`;
+                }
             }
 
-            // 그래프 요소가 없거나 비어있는 경우 처리
-            if (!elements || elements.length === 0) {
-                graphContainer.innerHTML = '<p style="text-align: center; padding-top: 50px; color: #777;">그래프를 그릴 데이터 요소가 없습니다.</p>';
-                graphStatus.textContent = "데이터 없음";
-                return; // 데이터 없으면 함수 종료
-            } else {
-                graphStatus.textContent = ""; // 상태 메시지 초기화
-                graphContainer.innerHTML = ''; // 기존 내용 제거 (메시지 등)
-            }
+            // --- 5. Ontograf 스타일 인터랙티브 로직 구현 (모든 리스너 복원) ---
+            function setupInteractions() {
+                if (!cy) return; 
 
-            try {
-                cy = cytoscape({
-                    container: graphContainer,
-                    elements: elements,
-                    layout: {
-                        name: 'cose',
-                        animate: 'end',
-                        animationDuration: 400,
-                        nodeDimensionsIncludeLabels: true,
-                        idealEdgeLength: (ele) => ele.data('level') === 'class' ? 150 : 80,
-                        nodeOverlap: 25,
-                        padding: 30
-                    },
-                    style: getStyles(),
-                    minZoom: 0.1,
-                    maxZoom: 3.0
+                cy.removeListener('cxttap');
+                cy.removeListener('tap');
+                cy.removeListener('mouseover');
+                cy.removeListener('mousemove');
+                cy.removeListener('mouseout');
+                cy.removeListener('zoom'); 
+                cy.removeListener('mousedown');
+                cy.removeListener('mouseup');
+
+                // 더블 클릭 (레벨 전환) 로직
+                cy.on('cxttap', 'node', function(evt){
+                    const node = evt.target; const nodeData = node.data();
+                    cy.stop(true, true);
+                    
+                    if (nodeData.level === CLASS_LEVEL) {
+                        currentLevel = INSTANCE_LEVEL; currentLevelSpan.textContent = "인스턴스 레벨";
+                        const className = nodeData.class_name;
+                        const filteredInstances = allInstanceElements.filter(el => {
+                            if (el.group === 'nodes') { return el.data.class_name === className; } 
+                            else if (el.group === 'edges') {
+                                const sourceIsTargetClass = allInstanceElements.some(n => n.group === 'nodes' && n.data.id === el.data.source && n.data.class_name === className);
+                                const targetIsTargetClass = allInstanceElements.some(n => n.group === 'nodes' && n.data.id === el.data.target && n.data.class_name === className);
+                                return sourceIsTargetClass || targetIsTargetClass;
+                            }
+                            return false;
+                        });
+                        
+                        setTimeout(() => {
+                            if (currentLevel === INSTANCE_LEVEL) {
+                                 renderGraph(filteredInstances.length > 0 ? filteredInstances : [{ data: { id: 'no_instance', label: `"${className}" 인스턴스 없음`, level: 'instance', class_name: 'Unknown' }, classes: 'cls_Unknown' }]);
+                            }
+                        }, 50);
+
+                    } else if (nodeData.level === INSTANCE_LEVEL) {
+                        currentLevel = CLASS_LEVEL; currentLevelSpan.textContent = "클래스 레벨";
+                        
+                        setTimeout(() => {
+                             if (currentLevel === CLASS_LEVEL) { renderGraph(allClassElements); }
+                        }, 50);
+                    }
+                });
+                
+                // 싱글 탭 (정보 표시 및 탐색) 로직
+                cy.on('tap', 'node', function(evt){
+                    const node = evt.target; const nodeData = node.data();
+                     // 💡 수정: ID가 infoPanel인 요소를 찾아 텍스트 업데이트
+                     document.getElementById('info-panel').textContent = 
+                        `타입: ${nodeData.level === CLASS_LEVEL ? '클래스' : '인스턴스'}\n이름: ${nodeData.label}\n${nodeData.level === INSTANCE_LEVEL ? '클래스: ' + nodeData.class_name + '\n' : ''}ID: ${nodeData.id}\nURI: ${nodeData.uri || nodeData.id}`;
+                    
+                    if (currentLevel === INSTANCE_LEVEL) {
+                        cy.elements().removeClass('highlighted faded');
+                        const neighborhood = node.neighborhood();
+                        cy.elements().not(neighborhood).not(node).addClass('faded');
+                        node.addClass('highlighted');
+                        neighborhood.addClass('highlighted');
+                    }
+                });
+                
+                // 관계 팝업 (Tooltip) 로직
+                cy.on('mouseover', 'edge', function(evt) {
+                    const edge = evt.target; const edgeData = edge.data();
+                    const sourceLabel = (edgeData.source.split('#').pop() || edgeData.source);
+                    const targetLabel = (edgeData.target.split('#').pop() || edgeData.target);
+                    tooltipDiv.innerHTML = `<strong>${sourceLabel}</strong> --(${edgeData.label})--> <strong>${targetLabel}</strong>`;
+                    tooltipDiv.style.opacity = 1;
+                });
+                cy.on('mousemove', function(evt) { 
+                    if (tooltipDiv.style.opacity == 1) {
+                        const rect = graphContainer.getBoundingClientRect();
+                        const scrollX = window.scrollX || window.pageXOffset; const scrollY = window.scrollY || window.pageYOffset;
+                        const renderedX = evt.renderedPosition.x; const renderedY = evt.renderedPosition.y;
+                        let left = rect.left + scrollX + renderedX + 15; let top = rect.top + scrollY + renderedY - 15;
+                        const tooltipWidth = tooltipDiv.offsetWidth; const tooltipHeight = tooltipDiv.offsetHeight;
+                        const windowWidth = window.innerWidth; const windowHeight = window.innerHeight;
+                        if (left + tooltipWidth > windowWidth + scrollX) { left = evt.originalEvent.clientX + scrollX - tooltipWidth - 15; }
+                        if (left < scrollX) { left = scrollX + 5; }
+                        if (top + tooltipHeight > windowHeight + scrollY) { top = evt.originalEvent.clientY + scrollY - tooltipHeight - 15; }
+                        if (top < scrollY) { top = scrollY + 5; }
+                        tooltipDiv.style.left = left + 'px'; tooltipDiv.style.top = top + 'px';
+                    }
+                });
+                cy.on('mouseout', 'edge', function() { tooltipDiv.style.opacity = 0; });
+                
+                // 캔버스 배경 탭 시 리셋
+                cy.on('tap', function(evt){
+                    if(evt.target === cy){ 
+                         if (currentLevel === INSTANCE_LEVEL) { 
+                            cy.elements().removeClass('faded highlighted');
+                            // 💡 수정: ID가 infoPanel인 요소를 찾아 텍스트 업데이트
+                            document.getElementById('info-panel').textContent = "요소를 클릭하여 상세 정보를 확인하세요.";
+                        }
+                    }
                 });
 
-                // 인터랙션 로직 연결
-                setupInteractions();
+                // 줌 슬라이더 동기화
+                cy.on('zoom', function() {
+                    const min = parseFloat(zoomSliderV.min);
+                    const max = parseFloat(zoomSliderV.max);
+                    zoomSliderV.value = max - cy.zoom() + min;
+                });
 
-            } catch (error) {
-                 console.error("Cytoscape 렌더링 오류:", error);
-                 graphContainer.innerHTML = `<p style="text-align: center; padding-top: 50px; color: red;">그래프 렌더링 중 오류 발생: ${error.message}</p>`;
-                 graphStatus.textContent = "렌더링 오류";
-            }
-        }
+                // 노드 드래그와 배경 패닝 충돌 해결
+                cy.on('mousedown', 'node', function(evt) {
+                    cy.userPanningEnabled(false);
+                });
+                cy.on('mouseup', 'node', function(evt) {
+                    cy.userPanningEnabled(true);
 
-        // --- 5. Ontograf 스타일 인터랙티브 로직 구현 ---
-        function setupInteractions() {
-            if (!cy) return; // cy 인스턴스 확인
-
-            // 이벤트 리스너 중복 방지를 위해 기존 리스너 제거
-            cy.removeListener('cxttap');
-            cy.removeListener('tap');
-            cy.removeListener('mouseover');
-            cy.removeListener('mousemove');
-            cy.removeListener('mouseout');
-
-
-            // 더블 클릭 (레벨 전환) 로직 - cxttap(우클릭) 사용
-            cy.on('cxttap', 'node', function(evt){
-                const node = evt.target;
-                const nodeData = node.data();
-
-                // 애니메이션/레이아웃 중지
-                cy.stop(true, true);
-
-                if (nodeData.level === CLASS_LEVEL) {
-                    // 클래스 -> 인스턴스 전환
-                    currentLevel = INSTANCE_LEVEL;
-                    currentLevelSpan.textContent = "인스턴스 레벨";
-
-                    // 해당 클래스에 속하는 인스턴스만 필터링
-                    const className = nodeData.class_name;
-                    const filteredInstances = allInstanceElements.filter(el => {
-                        if (el.group === 'nodes') {
-                            // 클래스 이름이 일치하는 노드 포함
-                            return el.data.class_name === className;
-                        } else if (el.group === 'edges') {
-                            // source 또는 target이 해당 클래스 인스턴스인지 확인
-                            // find 대신 filter + some 사용 (더 안전)
-                            const sourceIsTargetClass = allInstanceElements.some(n => n.group === 'nodes' && n.data.id === el.data.source && n.data.class_name === className);
-                            const targetIsTargetClass = allInstanceElements.some(n => n.group === 'nodes' && n.data.id === el.data.target && n.data.class_name === className);
-                            // 양쪽 노드가 모두 해당 클래스 인스턴스인 엣지만 포함 (더 명확한 관계 표시)
-                            return sourceIsTargetClass && targetIsTargetClass;
-                        }
-                        return false;
-                    });
-
-                    // --- 비동기 렌더링으로 충돌 방지 ---
-                    setTimeout(() => {
-                        if (currentLevel === INSTANCE_LEVEL) { // 상태 확인
-                             renderGraph(filteredInstances.length > 0 ? filteredInstances : [{ data: { id: 'no_instance', label: `"${className}" 인스턴스 없음`, level: 'instance', class_name: 'Unknown' }, classes: 'cls_Unknown' }]);
-                        }
-                    }, 50); // 약간의 지연
-
-                } else if (nodeData.level === INSTANCE_LEVEL) {
-                    // 인스턴스 -> 클래스 전환
-                    currentLevel = CLASS_LEVEL;
-                    currentLevelSpan.textContent = "클래스 레벨";
-
-                     // --- 비동기 렌더링 ---
-                    setTimeout(() => {
-                         if (currentLevel === CLASS_LEVEL) { // 상태 확인
-                            renderGraph(allClassElements);
-                        }
-                    }, 50);
-                }
-            });
-
-            // 싱글 탭 (정보 표시 및 탐색) 로직
-            cy.on('tap', 'node', function(evt){
-                const node = evt.target;
-                const nodeData = node.data();
-
-                 // 사이드바 정보 업데이트
-                 infoPanel.textContent =
-                    `타입: ${nodeData.level === CLASS_LEVEL ? '클래스' : '인스턴스'}\n이름: ${nodeData.label}\n${nodeData.level === INSTANCE_LEVEL ? '클래스: ' + nodeData.class_name + '\n' : ''}ID: ${nodeData.id}\nURI: ${nodeData.uri || nodeData.id}`; // URI 정보 추가
-
-                if (currentLevel === INSTANCE_LEVEL) {
-                    // 기존 강조/흐림 효과 제거
-                    cy.elements().removeClass('highlighted faded');
-
-                    // 선택된 노드와 이웃만 강조
-                    const neighborhood = node.neighborhood();
-                    cy.elements().not(neighborhood).not(node).addClass('faded');
-
-                    node.addClass('highlighted');
-                    neighborhood.addClass('highlighted');
-                }
-            });
-
-            // --- 관계 팝업 (Tooltip) 로직 ---
-            cy.on('mouseover', 'edge', function(evt) {
-                const edge = evt.target;
-                const edgeData = edge.data();
-                // 툴팁 내용 개선: Source -> Property -> Target 형식
-                // URI에서 이름 부분만 추출하여 표시
-                const sourceLabel = edgeData.source.split('#').pop();
-                const targetLabel = edgeData.target.split('#').pop();
-                tooltipDiv.innerHTML = `<strong>${sourceLabel}</strong> --(${edgeData.label})--> <strong>${targetLabel}</strong>`;
-                tooltipDiv.style.opacity = 1;
-            });
-
-            cy.on('mousemove', function(evt) { // 캔버스 전체에서 mousemove 감지
-                if (tooltipDiv.style.opacity == 1) {
-                    const rect = graphContainer.getBoundingClientRect();
-                    // 페이지 스크롤 및 캔버스 위치 고려
-                    const scrollX = window.scrollX || window.pageXOffset;
-                    const scrollY = window.scrollY || window.pageYOffset;
-                    // Cytoscape의 렌더링된 위치 사용
-                    const renderedX = evt.renderedPosition.x;
-                    const renderedY = evt.renderedPosition.y;
-
-                    // 툴팁 위치 계산 (캔버스 기준 + 오프셋)
-                    let left = rect.left + scrollX + renderedX + 15;
-                    let top = rect.top + scrollY + renderedY - 15;
-
-
-                    // 툴팁이 화면 밖으로 나가지 않도록 조정 (페이지 기준)
-                    const tooltipWidth = tooltipDiv.offsetWidth;
-                    const tooltipHeight = tooltipDiv.offsetHeight;
-                    const windowWidth = window.innerWidth;
-                    const windowHeight = window.innerHeight;
-
-                    // 오른쪽 경계
-                    if (left + tooltipWidth > windowWidth + scrollX) {
-                        left = evt.originalEvent.clientX + scrollX - tooltipWidth - 15;
+                });
+                cy.on('mouseup', function(evt) {
+                    if (evt.target === cy) {
+                        cy.userPanningEnabled(true); 
                     }
-                    // 왼쪽 경계
-                     if (left < scrollX) {
-                        left = scrollX + 5;
-                    }
-                     // 아래쪽 경계
-                     if (top + tooltipHeight > windowHeight + scrollY) {
-                        top = evt.originalEvent.clientY + scrollY - tooltipHeight - 15;
-                    }
-                    // 위쪽 경계
-                     if (top < scrollY) {
-                        top = scrollY + 5;
-                    }
+                });
 
+            } // [ setupInteractions 함수 종료 ]
 
-                    tooltipDiv.style.left = left + 'px';
-                    tooltipDiv.style.top = top + 'px';
-                }
-            });
+            // --- 분석 버튼 이벤트 리스너 연결 ---
+            analyzeButton.addEventListener('click', analyzeFile);
 
-            cy.on('mouseout', 'edge', function() {
-                tooltipDiv.style.opacity = 0;
-            });
-
-            // 캔버스 배경 탭 시 리셋
-            cy.on('tap', function(evt){
-                if(evt.target === cy){ // 배경 클릭 시
-                     if (currentLevel === INSTANCE_LEVEL) { // 인스턴스 레벨일 때만 리셋
-                        cy.elements().removeClass('faded highlighted');
-                        infoPanel.textContent = "요소를 클릭하여 상세 정보를 확인하세요.";
-                    }
-                }
-            });
-        }
-
-        // --- 분석 버튼 이벤트 리스너 연결 ---
-        // 버튼 클릭 시 analyzeFile 함수 실행
-        analyzeButton.addEventListener('click', analyzeFile);
-
-    }); // DOMContentLoaded 끝
-</script>
+        }); // DOMContentLoaded 끝
+    </script>
 </body>
 </html>
-
