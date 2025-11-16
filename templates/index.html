@@ -250,7 +250,8 @@
             <h2>4. 다운로드 및 정보</h2>
             <p><strong>그래프 레벨:</strong> <span id="current-level">클래스 레벨</span></p>
             <div>
-                <h3>파일 다운로드</h3>
+                <!-- 💡 [수정] h3 태그에 ID 추가 -->
+                <h3 id="download-title">파일 다운로드</h3>
                 <a href="#" id="link-owl" class="download-link">OWL (.owl)</a>
                 <a href="#" id="link-rdf" class="download-link">RDF/XML (.rdf)</a>
                 <a href="#" id="link-ttl" class="download-link">Turtle (.ttl)</a>
@@ -266,7 +267,7 @@
         © 2025 Gemini Ontology Visualization Tool
     </footer>
 
-    <!-- 💡 JavaScript 로직은 수정할 필요 없이 그대로 작동합니다. -->
+    <!-- 💡 [FIX 1] DOMContentLoaded 이벤트 리스너로 모든 JS 코드를 감쌉니다. -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
 
@@ -289,6 +290,7 @@
             const currentLevelSpan = document.getElementById('current-level');
             const infoPanel = document.getElementById('info-panel'); // ID가 동일하므로 정상 작동
             const zoomSliderV = document.getElementById('zoomSliderV');
+            const downloadTitle = document.getElementById('download-title'); // 💡 [FIX 1] h3 ID 참조
             
             // --- 줌 슬라이더 이벤트 리스너 ---
             zoomSliderV.addEventListener('input', function() {
@@ -301,13 +303,32 @@
                 }
             });
             
-            // --- 슬라이더 드래그 시 캔버스 패닝 방지 ---
+            // --- 💡 [FIX 2] 슬라이더 드래그 시 캔버스 패닝 방지 (강화) ---
+            // 슬라이더 컨테이너 전체에서 이벤트 차단
+            const zoomControlsDiv = document.getElementById('zoom-controls-vertical');
+            
+            // 모든 마우스/터치 이벤트를 캔버스로 전파하지 않도록 차단
+            ['mousedown', 'mousemove', 'mouseup', 'touchstart', 'touchmove', 'touchend'].forEach(eventType => {
+                zoomControlsDiv.addEventListener(eventType, function(event) {
+                    event.stopPropagation(); // 캔버스로 이벤트 전파 차단
+                }, true); // 캡처 단계에서 차단
+            });
+            
+            // 슬라이더 드래그 중 Cytoscape 패닝 비활성화
+            let isSliderDragging = false;
+            
             zoomSliderV.addEventListener('mousedown', function(event) {
-                event.stopPropagation();
+                isSliderDragging = true;
+                if (cy) cy.userPanningEnabled(false);
             });
-            zoomSliderV.addEventListener('touchstart', function(event) {
-                 event.stopPropagation();
+            
+            document.addEventListener('mouseup', function() {
+                if (isSliderDragging) {
+                    isSliderDragging = false;
+                    if (cy) cy.userPanningEnabled(true);
+                }
             });
+            // --------------------------------------------------
 
             // --- 2. 백엔드 통신 (analyzeFile 함수) ---
             async function analyzeFile() {
@@ -341,7 +362,8 @@
                         document.getElementById('link-rdf').href = '/download/rdf';
                         document.getElementById('link-ttl').href = '/download/ttl';
                         document.getElementById('link-jsonld').href = '/download/jsonld';
-                        document.querySelector('aside div h3').textContent = "파일 다운로드";
+                        // 💡 [FIX 1] ID로 h3 텍스트 변경
+                        downloadTitle.textContent = "파일 다운로드";
                     } else {
                         loadingDiv.textContent = "분석 실패!";
                         outputDiv.textContent = `서버 오류 발생: ${result.error}`;
@@ -407,8 +429,10 @@
                         minZoom: 0.1,
                         maxZoom: 3.0,
                         wheelSensitivity: 0, // 마우스 휠 줌 비활성화
-                        userPanningEnabled: true,
-                        userZoomingEnabled: true
+                        
+                        // 💡 [FIX 2] 기본 인터랙션 옵션 명시
+                        userPanningEnabled: true, // 사용자 패닝 활성화
+                        userZoomingEnabled: true // 사용자 줌 활성화 (슬라이더로 제어)
                     });
                     
                     const min = parseFloat(zoomSliderV.min);
@@ -427,6 +451,7 @@
             function setupInteractions() {
                 if (!cy) return; 
 
+                // 💡 [FIX 3] 이벤트 리스너 중복 방지를 위해 기존 리스너 모두 제거
                 cy.removeListener('cxttap');
                 cy.removeListener('tap');
                 cy.removeListener('mouseover');
@@ -472,8 +497,7 @@
                 // 싱글 탭 (정보 표시 및 탐색) 로직
                 cy.on('tap', 'node', function(evt){
                     const node = evt.target; const nodeData = node.data();
-                     // 💡 수정: ID가 infoPanel인 요소를 찾아 텍스트 업데이트
-                     document.getElementById('info-panel').textContent = 
+                     infoPanel.textContent = 
                         `타입: ${nodeData.level === CLASS_LEVEL ? '클래스' : '인스턴스'}\n이름: ${nodeData.label}\n${nodeData.level === INSTANCE_LEVEL ? '클래스: ' + nodeData.class_name + '\n' : ''}ID: ${nodeData.id}\nURI: ${nodeData.uri || nodeData.id}`;
                     
                     if (currentLevel === INSTANCE_LEVEL) {
@@ -515,8 +539,7 @@
                     if(evt.target === cy){ 
                          if (currentLevel === INSTANCE_LEVEL) { 
                             cy.elements().removeClass('faded highlighted');
-                            // 💡 수정: ID가 infoPanel인 요소를 찾아 텍스트 업데이트
-                            document.getElementById('info-panel').textContent = "요소를 클릭하여 상세 정보를 확인하세요.";
+                            infoPanel.textContent = "요소를 클릭하여 상세 정보를 확인하세요.";
                         }
                     }
                 });
@@ -528,19 +551,20 @@
                     zoomSliderV.value = max - cy.zoom() + min;
                 });
 
-                // 노드 드래그와 배경 패닝 충돌 해결
+                // 💡 [FIX 4] 노드 드래그와 배경 패닝 충돌 해결
                 cy.on('mousedown', 'node', function(evt) {
-                    cy.userPanningEnabled(false);
+                    cy.userPanningEnabled(false); // 노드를 잡을 때 패닝 끔
                 });
                 cy.on('mouseup', 'node', function(evt) {
-                    cy.userPanningEnabled(true);
-
+                    cy.userPanningEnabled(true); // 노드를 놓을 때 패닝 켬
                 });
+                // 캔버스에서 마우스를 뗄 때도 패닝 활성화 (안전장치)
                 cy.on('mouseup', function(evt) {
                     if (evt.target === cy) {
                         cy.userPanningEnabled(true); 
                     }
                 });
+                // ------------------------------------------
 
             } // [ setupInteractions 함수 종료 ]
 
