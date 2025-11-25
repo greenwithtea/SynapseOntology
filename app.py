@@ -70,7 +70,7 @@ def index():
     return render_template('index.html')
 
 
-# --- 3. 핵심 기능: 파일 분석 및 개념 추출 (JSON-LD 요청 프롬프트) ---
+# --- 3. 핵심 기능: 파일 분석 및 개념 추출 (JSON-LD 요청 프롬프트 유지 + 추가 분석 프롬프트) ---
 @app.route('/analyze_file', methods=['POST'])
 def analyze_file():
     # 1. 파일 수신 및 유효성 검사
@@ -102,7 +102,7 @@ def analyze_file():
             except Exception as e: print(f"임시 파일 삭제 오류: {e}")
         return jsonify({"error": "파일에서 텍스트를 추출하지 못했습니다."}), 500
 
-    # --- 2. Gemini API 호출 ---
+    # --- 2. Gemini API 호출 (기존 JSON-LD 프롬프트: 너의 원본 프롬프트를 그대로 사용) ---
     # ⚠️ 중요: JSON 예시의 중괄호를 {{ }} 로 이스케이프 처리
     prompt = f"""
     Analyze the text below and extract an OWL ontology in JSON-LD format.
@@ -169,6 +169,36 @@ def analyze_file():
 
         # ⚠️ 중요: Gemini 응답이 이제 단순 딕셔너리가 아닌 JSON-LD 배열일 수 있음
         ontology_jsonld = json.loads(json_output_str) # JSON-LD 데이터를 파이썬 리스트/딕셔너리로 변환
+
+        # --- 3. 추가: JSON-LD + PDF 텍스트 기반 온톨로지 분석 요청 (새 프롬프트) ---
+        # 분석 프롬프트는 아래처럼 상세히 작성하여 핵심 클래스, 관계, 도메인 활용, 확장 모델, 요약 등을 출력하도록 지시합니다.
+        analysis_prompt = f"""
+You are an ontology and knowledge-organization expert. Given the extracted document text and the OWL ontology (in JSON-LD) generated from it, produce a concise and structured ontology analysis in Korean and English (Korean primary, English secondary for technical labels).
+The output MUST be plain text (no JSON, no code fences), and should follow this structure exactly:
+
+1) Title line: one-line title describing the ontology focus.
+2) 주요 클래스 (Key Classes): list top-level classes with a short (1-sentence) description for each.
+3) 주요 관계 (Key Relationships): list important object properties between classes and what they mean (1-2 sentences each).
+4) 도메인별 활용 사례 (Domain Use Cases): at least 3 concrete examples mapping ontology elements to real-world systems (e.g., libraries, music platforms, academic repositories).
+5) 제언된 확장 모델 (Proposed Extension Model): practical recommendations (3-5 bullet points) for consortium/policy/data-fusion steps to maximize interoperability and governance.
+6) 한줄 요약 (One-line summary): a single Korean sentence summarizing the whole analysis.
+
+Important instructions for the generator:
+- Use the provided JSON-LD as the authoritative ontology structure. When naming classes or properties, prefer the local fragment identifier (the part after '#') if available.
+- If the JSON-LD lacks explicit labels or domains, infer reasonable names from URIs and the document text, but mark inferred items with "(inferred)".
+- Keep the overall analysis readable (use short paragraphs and bullet-like lines). Do not output JSON or machine-readable formats — produce human-readable analysis text.
+- If you mention external systems (e.g., ISNI, ORCID, VIAF), explain briefly how they map to ontology classes or properties.
+
+Document text:
+{extracted_text}
+
+Generated ontology (JSON-LD):
+{json_output_str}
+
+Produce the analysis now.
+"""
+        analysis_response = model.generate_content(analysis_prompt)
+        ontology_analysis = analysis_response.text.strip() if analysis_response and analysis_response.text else ""
 
         # --- 4. 시각화 데이터 생성 로직 (JSON-LD 파싱) ---
         class_elements = []
@@ -282,7 +312,6 @@ def analyze_file():
                                     # 엣지 ID에 랜덤 요소 추가하여 고유성 보장
                                     edge_id = f"e{edge_count_instance}_{safe_source_label}_{safe_target_label}_{os.urandom(2).hex()}"
 
-
                                     instance_elements.append({
                                         'group': 'edges',
                                         'data': {
@@ -390,7 +419,8 @@ def analyze_file():
             "message": "분석 성공 및 Ontograf 데이터 생성 완료",
             "ontology_jsonld": ontology_jsonld,
             "class_elements": class_elements,
-            "instance_elements": instance_elements
+            "instance_elements": instance_elements,
+            "ontology_analysis": ontology_analysis  # <-- 새로 추가된 분석 텍스트
         }), 200
 
     except ValueError as ve:
@@ -398,7 +428,10 @@ def analyze_file():
          return jsonify({"error": f"데이터 처리 중 오류 발생: {ve}"}), 500
     except json.JSONDecodeError as je:
         print(f"JSON 파싱 오류: {je}")
-        print(f"Gemini 원본 응답:\n{response.text}") # 디버깅을 위해 원본 응답 출력
+        try:
+            print(f"Gemini 원본 응답:\n{response.text}") # 디버깅을 위해 원본 응답 출력
+        except:
+            pass
         return jsonify({"error": f"Gemini 응답 JSON 파싱 실패: {je}. 원본 응답을 확인하세요."}), 500
     except Exception as e:
         print(f"❌ API 호출 또는 서버 오류 발생: {e}")
@@ -411,6 +444,7 @@ def analyze_file():
                 os.remove(file_path)
             except Exception as e:
                 print(f"임시 파일 삭제 오류: {e}")
+
 
 # --- 4. 파일 다운로드 기능 엔드포인트 (수정됨) ---
 @app.route('/download/<string:file_format>')

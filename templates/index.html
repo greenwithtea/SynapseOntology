@@ -219,9 +219,10 @@
                 <span id="loading"></span>
             </div>
 
-            <h2>2. 분석 결과 (Gemini JSON-LD)</h2>
+            <h2>2. 분석 결과 (온톨로지 분석 텍스트)</h2>
             <div class="card">
-                <pre id="output">파일을 업로드하면 Gemini API의 분석 결과가 여기에 표시됩니다.</pre>
+                <!-- 기존에 JSON-LD를 출력하던 위치에 이제 분석 텍스트를 표시합니다 -->
+                <pre id="output">파일을 업로드하면 Gemini의 온톨로지 분석 결과가 여기에 표시됩니다.</pre>
             </div>
 
             <h2>3. 온톨로지 그래프 시각화</h2>
@@ -342,7 +343,7 @@
                 
                 graphStatus.textContent = "";
                 const infoPanel = getInfoPanel();
-                if (infoPanel) infoPanel.textContent = "요소를 클릭하여 상세 정보를 확인하세요.";
+                if (infoPanel) infoPanel.textContent = "요소를 업로드 후 클릭하여 상세 정보를 확인하세요.";
                 currentLevelSpan.textContent = "분석 중...";
                 outputDiv.textContent = "분석 결과를 기다리는 중...";
 
@@ -354,10 +355,12 @@
 
                     if (response.ok) {
                         loadingDiv.textContent = "분석 완료!";
-                        outputDiv.textContent = JSON.stringify(result.ontology_jsonld, null, 2);
+                        // 기존에는 JSON-LD를 출력했지만, 이제는 JSON-LD 기반의 '온톨로지 분석 텍스트'를 출력합니다.
+                        outputDiv.textContent = result.ontology_analysis || "분석 텍스트가 없습니다.";
                         allClassElements = result.class_elements || [];
                         allInstanceElements = result.instance_elements || [];
                         currentLevel = CLASS_LEVEL;
+                        // 그래프는 기존의 class elements로 렌더
                         renderGraph(allClassElements); 
                         currentLevelSpan.textContent = "클래스 레벨";
                         
