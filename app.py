@@ -420,7 +420,7 @@ Produce the analysis now.
             "ontology_jsonld": ontology_jsonld,
             "class_elements": class_elements,
             "instance_elements": instance_elements,
-            "ontology_analysis": ontology_analysis  # <-- 새로 추가된 분석 텍스트
+            "ontology_analysis": ontology_analysis  # 새로 추가된 분석 텍스트
         }), 200
 
     except ValueError as ve:
