@@ -174,9 +174,9 @@ def analyze_file():
         # 분석 프롬프트는 아래처럼 상세히 작성하여 핵심 클래스, 관계, 도메인 활용, 확장 모델, 요약 등을 출력하도록 지시합니다.
         analysis_prompt = f"""
 You are an ontology and knowledge-organization expert. Given the extracted document text and the OWL ontology (in JSON-LD) generated from it, produce a concise and structured ontology analysis in Korean and English (Korean primary, English secondary for technical labels).
-The output MUST be plain text (no JSON, no code fences), and should follow this structure exactly:
+The output MUST use Markdown formatting (headers, bullet points, bold), but NO code fences. Follow this structure exactly:
 
-1) Title line: one-line title describing the ontology focus.
+1) Title: A single H2 header containing the Korean title followed by the English title, separated by a HTML line break tag (<br>). Format it exactly like: `## [Korean Title] <br> [English Title]`
 2) 주요 클래스 (Key Classes): list top-level classes with a short (1-sentence) description for each.
 3) 주요 관계 (Key Relationships): list important object properties between classes and what they mean (1-2 sentences each).
 4) 도메인별 활용 사례 (Domain Use Cases): at least 3 concrete examples mapping ontology elements to real-world systems (e.g., libraries, music platforms, academic repositories).
@@ -188,6 +188,14 @@ Important instructions for the generator:
 - If the JSON-LD lacks explicit labels or domains, infer reasonable names from URIs and the document text, but mark inferred items with "(inferred)".
 - Keep the overall analysis readable (use short paragraphs and bullet-like lines). Do not output JSON or machine-readable formats — produce human-readable analysis text.
 - If you mention external systems (e.g., ISNI, ORCID, VIAF), explain briefly how they map to ontology classes or properties.
+
+Use Markdown formatting with hierarchical headings:
+- Use `##` for the document title. ENSURE you use the `<br>` tag inside the header for the line break.
+- Use `###` for each major section
+- Use bullet lists (`- item`) inside sections
+- Use **bold** to emphasize important ontology terms
+Do NOT wrap the response in code fences.
+
 
 Document text:
 {extracted_text}

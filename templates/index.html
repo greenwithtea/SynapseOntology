@@ -6,6 +6,8 @@
     <title>Gemini 기반 온톨로지 분석 및 시각화 도구</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
     <style>
         :root {
             --primary: #2f80ed;
@@ -203,7 +205,18 @@
         .card input[type="file"] { width: 100%; box-sizing: border-box; margin-bottom: 10px; }
         .card #loading { display: block; text-align: center; margin-top: 10px; font-style: italic; }
 
+        #output {
+            font-family: inherit !important; /* 페이지 기본 폰트 적용 */
+            font-size: 0.95rem;
+            line-height: 1.5;
+            white-space: pre-wrap; /* 줄바꿈 유지 */
+        }
         /* --- 모달(팝업) 스타일 추가 --- */
+        #modal-output-content {
+            font-family: inherit !important; /* 페이지 기본 폰트 적용 */
+            white-space: normal;
+            line-height: 1.6;
+        }
         .modal-overlay {
             display: none; /* 기본적으로 숨김 */
             position: fixed;
@@ -282,6 +295,39 @@
             color: var(--text-dark);
             max-height: none; /* 높이 제한 해제 */
             margin: 0;
+        }
+
+        #output, #modal-output-content {
+            color: #222;
+            letter-spacing: 0.2px;
+        }
+
+        /* --- 마크다운 출력 간격 조정 (여기에 추가) --- */
+        
+        /* 1. 전체 제목 (H2) 스타일 */
+        #output h2, #modal-output-content h2 {
+            margin-top: 0;          
+            margin-bottom: 2.5rem;  /* 제목과 첫 번째 소제목 사이를 넓게 벌림 */
+            line-height: 1.4;       /* 줄바꿈 간격 적당히 */
+        }
+
+        /* 2. 소제목 (H3) - '주요 클래스' 등 */
+        #output h3, #modal-output-content h3 {
+            margin-top: 3rem;       /* [중요] 위쪽 공백: 이전 내용과 아주 멀리 떨어뜨림 */
+            margin-bottom: 0.5rem;  /* [중요] 아래쪽 공백: 바로 밑 콘텐츠와 착 붙게 좁힘 */
+            color: var(--primary);  /* 색상 강조 (선택사항) */
+        }
+
+        /* 3. 본문 내용 (리스트, 문단) */
+        #output ul, #modal-output-content ul, 
+        #output p, #modal-output-content p {
+            margin-top: 0;          /* 소제목 바로 밑에 딱 붙도록 위쪽 공백 제거 */
+            margin-bottom: 1rem;    /* 문단이 끝나면 약간 띄움 */
+        }
+        
+        /* 4. 리스트 내부 간격 미세 조정 */
+        #output li, #modal-output-content li {
+            margin-bottom: 0.3rem;  /* 리스트 항목끼리는 살짝만 띄움 */
         }
 
         /* 애니메이션 효과 */
@@ -367,7 +413,7 @@
                 <span class="close-modal">&times;</span>
             </div>
             <div class="modal-body">
-                <pre id="modal-output-content">내용이 여기에 로드됩니다...</pre>
+                <div id="modal-output-content">내용이 여기에 로드됩니다...</div>
             </div>
         </div>
     </div>
@@ -396,12 +442,12 @@
             // 전체보기 버튼 클릭 시
             viewFullBtn.addEventListener('click', function() {
                 // 현재 output의 텍스트를 모달 창으로 복사
-                const currentText = outputDiv.textContent;
+                const currentText = outputDiv.innerHTML;
                 if (!currentText || currentText.trim() === "파일을 업로드하면 Gemini의 온톨로지 분석 결과가 여기에 표시됩니다.") {
                     alert("분석 결과가 아직 없습니다.");
                     return;
                 }
-                modalOutputContent.textContent = currentText;
+                modalOutputContent.innerHTML = marked.parse(currentText);
                 resultModal.style.display = "block";
                 
                 // 모달이 열릴 때 스크롤 방지 (선택사항)
@@ -514,8 +560,9 @@
 
                     if (response.ok) {
                         loadingDiv.textContent = "분석 완료!";
-                        // 기존의 JSON-LD 말고 JSON-LD 기반의 '온톨로지 분석 텍스트'를 출력.
-                        outputDiv.textContent = result.ontology_analysis || "분석 텍스트가 없습니다.";
+                        // 기존의 JSON-LD 말고 JSON-LD 기반의 '온톨로지 분석 텍스트'를 출력. plain text를 Markdown으로 교체
+                        outputDiv.innerHTML = marked.parse(result.ontology_analysis || "분석 텍스트가 없습니다.");
+
                         allClassElements = result.class_elements || [];
                         allInstanceElements = result.instance_elements || [];
                         currentLevel = CLASS_LEVEL;
