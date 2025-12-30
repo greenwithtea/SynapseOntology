@@ -102,7 +102,7 @@ def analyze_file():
             except Exception as e: print(f"임시 파일 삭제 오류: {e}")
         return jsonify({"error": "파일에서 텍스트를 추출하지 못했습니다."}), 500
 
-    # --- 2. Gemini API 호출 (기존 JSON-LD 프롬프트: 너의 원본 프롬프트를 그대로 사용) ---
+    # --- 2. Gemini API 호출  ---
     # ⚠️ 중요: JSON 예시의 중괄호를 {{ }} 로 이스케이프 처리
     prompt = f"""
     Analyze the text below and extract an OWL ontology in JSON-LD format.
